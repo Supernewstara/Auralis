@@ -55,18 +55,16 @@ export const QueuePanel: React.FC<QueuePanelProps> = ({ tracks, currentIndex, on
                      <span className="text-xs text-white/50 truncate">{track.artist}</span>
                    </div>
                 </div>
-                {isActive && (
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRemove(i);
-                    }}
-                    className="opacity-0 group-hover:opacity-100 p-2 text-white/50 hover:text-white/90 transition-all ml-2"
-                    title="Skip"
-                  >
-                     <span className="material-symbols-outlined text-[18px]">skip_next</span>
-                  </button>
-                )}
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemove(i);
+                  }}
+                  className="opacity-0 group-hover:opacity-100 p-2 text-white/50 hover:text-white/90 transition-all ml-2"
+                  title="Remove"
+                >
+                   <span className="material-symbols-outlined text-[18px]">close</span>
+                </button>
               </div>
             );
           })}

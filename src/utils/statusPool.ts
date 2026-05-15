@@ -38,7 +38,12 @@ export const STATUS_POOL: Record<string, string[]> = {
 export const DEFAULT_POOL = [
   "思考中...",
   "处理中...",
-  "稍等片刻..."
+  "稍等片刻...",
+  "反应中...",
+  "让我琢磨琢磨...",
+  "运算回路打通中...",
+  "喝口水冷静分析下...",
+  "数据流转中..."
 ];
 
 let lastMessage = '';

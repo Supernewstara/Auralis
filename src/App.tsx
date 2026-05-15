@@ -113,7 +113,7 @@ export default function App() {
           }
         }
       })
-      .catch(err => console.error(err));
+      .catch(() => {});
   };
 
 
@@ -223,7 +223,13 @@ export default function App() {
             if (eventType === 'tool_start') {
                setAgentStatus(getRandomStatus(data.tool));
             } else if (eventType === 'tool_end') {
-               // do nothing or clear status momentarily
+               if (data.tool === 'search_track') {
+                  setAgentStatus("搜寻完毕");
+               } else if (data.tool === 'add_to_queue') {
+                  setAgentStatus("队列布置完毕");
+               } else {
+                  setAgentStatus("");
+               }
             } else if (eventType === 'chunk') {
                streamedReasoning += data.text || "";
                setStreamedText(prev => prev + (data.text || ""));
@@ -302,17 +308,7 @@ export default function App() {
            const currentIdx = idxRef.current;
            if (currentRec?.tracks && currentIdx < currentRec.tracks.length - 1) {
               const nextIdx = currentIdx + 1;
-              const track = currentRec.tracks[nextIdx];
-              setCurrentTrackIndex(nextIdx);
-              if (track.audioUrl && track.audioUrl !== "vip_free_trial" && audioRef.current) {
-                audioRef.current.src = "/api/proxy-audio?url=" + encodeURIComponent(track.audioUrl);
-                audioRef.current.load();
-                audioRef.current.play().catch(() => setIsPlaying(false));
-                setIsPlaying(true);
-              } else {
-                setIsPlaying(false);
-                setMessages(prev => [...prev, {role: 'agent', content: `[System]: Track "${track.trackName}" by ${track.artist} restricts API access (VIP limited) or is unavailable.`}]);
-              }
+              applyAndPlayTrack(currentRec.tracks[nextIdx], nextIdx, true);
            } else {
               setMessages(prev => [...prev, {role: 'agent', content: "There are no more tracks in the queue to skip to."}]);
            }
@@ -340,17 +336,7 @@ export default function App() {
            const currentIdx = idxRef.current;
            if (currentRec?.tracks && currentIdx < currentRec.tracks.length - 1) {
               const nextIdx = currentIdx + 1;
-              const track = currentRec.tracks[nextIdx];
-              setCurrentTrackIndex(nextIdx);
-              if (track.audioUrl && track.audioUrl !== "vip_free_trial" && audioRef.current) {
-                audioRef.current.src = "/api/proxy-audio?url=" + encodeURIComponent(track.audioUrl);
-                audioRef.current.load();
-                audioRef.current.play().catch(() => setIsPlaying(false));
-                setIsPlaying(true);
-              } else {
-                setIsPlaying(false);
-                setMessages(prev => [...prev, {role: 'agent', content: `[System]: Track "${track.trackName}" by ${track.artist} restricts API access (VIP limited) or is unavailable.`}]);
-              }
+              applyAndPlayTrack(currentRec.tracks[nextIdx], nextIdx, true);
            } else {
               setMessages(prev => [...prev, {role: 'agent', content: "There are no more tracks in the queue to skip to."}]);
            }
@@ -360,22 +346,7 @@ export default function App() {
            setCurrentTrackIndex(0);
            
            if (newTracks.length === 1) {
-             const firstTrack = newTracks[0];
-             if (firstTrack) {
-              if (firstTrack.audioUrl && firstTrack.audioUrl !== "vip_free_trial" && audioRef.current) {
-                audioRef.current.src = "/api/proxy-audio?url=" + encodeURIComponent(firstTrack.audioUrl);
-                audioRef.current.load();
-                if (autoplay) {
-                  audioRef.current.play().catch(() => setIsPlaying(false));
-                  setIsPlaying(true);
-                }
-              } else {
-                 setIsPlaying(false);
-                 setMessages(prev => [...prev, {role: 'agent', content: `[System]: Track "${firstTrack.trackName}" by ${firstTrack.artist} restricts API access (VIP limited) or is unavailable.`}]);
-              }
-             } else {
-                setIsPlaying(false);
-             }
+             applyAndPlayTrack(newTracks[0], 0, autoplay);
            } else if (newTracks.length > 1) {
               setIsPlaying(false);
               setIsQueueExpanded(true);
@@ -395,19 +366,8 @@ export default function App() {
               return { ...prev, tracks: [...prev.tracks, ...newTracks], reasoning: finalAiMsg };
            });
            if (!recRef.current?.tracks || recRef.current.tracks.length === 0) {
-               const track = newTracks[0];
-               if (track) {
-                   if (track.audioUrl && track.audioUrl !== "vip_free_trial" && audioRef.current) {
-                     audioRef.current.src = "/api/proxy-audio?url=" + encodeURIComponent(track.audioUrl);
-                     audioRef.current.load();
-                     if (autoplay) {
-                       audioRef.current.play().catch(() => setIsPlaying(false));
-                       setIsPlaying(true);
-                     }
-                   } else {
-                     setIsPlaying(false);
-                     setMessages(prev => [...prev, {role: 'agent', content: `[System]: Track "${track.trackName}" by ${track.artist} restricts API access (VIP limited) or is unavailable.`}]);
-                   }
+               if (newTracks[0]) {
+                 applyAndPlayTrack(newTracks[0], 0, autoplay);
                }
            }
         } 
@@ -424,19 +384,25 @@ export default function App() {
     setLoading(false);
   };
 
-  const playTrack = (index: number) => {
-    if (!recommendation?.tracks || !recommendation.tracks[index]) return;
-    const track = recommendation.tracks[index];
+  const applyAndPlayTrack = (track: any, index: number, shouldPlay: boolean = true) => {
+    if (!track) return;
     setCurrentTrackIndex(index);
     if (track.audioUrl && track.audioUrl !== "vip_free_trial" && audioRef.current) {
       audioRef.current.src = "/api/proxy-audio?url=" + encodeURIComponent(track.audioUrl);
       audioRef.current.load();
-      audioRef.current.play().catch(() => setIsPlaying(false));
-      setIsPlaying(true);
+      if (shouldPlay) {
+        audioRef.current.play().catch(() => setIsPlaying(false));
+        setIsPlaying(true);
+      }
     } else {
       setIsPlaying(false);
       setMessages(prev => [...prev, {role: 'agent', content: `[System]: Track "${track.trackName}" by ${track.artist} restricts API access (VIP limited) or is unavailable.`}]);
     }
+  };
+
+  const playTrack = (index: number) => {
+    if (!recommendation?.tracks || !recommendation.tracks[index]) return;
+    applyAndPlayTrack(recommendation.tracks[index], index, true);
   };
 
   const nextTrack = () => {
@@ -462,22 +428,29 @@ export default function App() {
       newTracks.splice(index, 1);
       return { ...prev, tracks: newTracks };
     });
-    if (index === currentTrackIndex) {
-       if (recommendation?.tracks && index < recommendation.tracks.length - 1) {
-          playTrack(index);
-       } else {
-          if (audioRef.current) {
-            audioRef.current.pause();
-            setIsPlaying(false);
+    
+    // Evaluate safely with local new array
+    if (recommendation?.tracks) {
+       const newTracks = [...recommendation.tracks];
+       newTracks.splice(index, 1);
+       if (index === currentTrackIndex) {
+          if (index < newTracks.length) {
+             applyAndPlayTrack(newTracks[index], index, true);
+          } else {
+             if (audioRef.current) {
+               audioRef.current.pause();
+               setIsPlaying(false);
+             }
           }
+       } else if (index < currentTrackIndex) {
+          setCurrentTrackIndex(currentTrackIndex - 1);
        }
-    } else if (index < currentTrackIndex) {
-       setCurrentTrackIndex(currentTrackIndex - 1);
     }
   };
 
   const handleClearQueue = () => {
     setRecommendation(prev => prev ? { ...prev, tracks: [] } : null);
+    setCurrentTrackIndex(0);
     setIsQueueExpanded(false);
     if (audioRef.current) {
       audioRef.current.pause();
@@ -584,7 +557,7 @@ export default function App() {
               <WaveformScrubber 
                  duration={duration} 
                  currentTime={currentTime} 
-                 audioUrl={currentTrack?.audioUrl ? `/api/proxy-audio?url=${encodeURIComponent(currentTrack.audioUrl)}` : undefined}
+                 audioUrl={(currentTrack?.audioUrl && currentTrack.audioUrl !== "vip_free_trial") ? `/api/proxy-audio?url=${encodeURIComponent(currentTrack.audioUrl)}` : undefined}
                  onSeek={(pct) => {
                  if (audioRef.current && duration) {
                     audioRef.current.currentTime = pct * duration;

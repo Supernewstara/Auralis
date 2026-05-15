@@ -44,7 +44,7 @@ export const WaveformScrubber = ({ duration, currentTime, onSeek, audioUrl }: { 
           setHeights(normalized);
         }
       } catch (e) {
-        console.error("Error generating waveform", e);
+        // Silently generate fake waveform on network or decoding error to gracefully degrade
         if (!isCancelled) {
            setHeights(Array.from({length: bars}).map((_, i) => 12 + Math.sin(i * 0.5) * 8 + Math.random() * 10));
         }

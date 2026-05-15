@@ -26,7 +26,10 @@ async function startServer() {
       
       res.status(fetchRes.status);
       fetchRes.headers.forEach((val, key) => {
-        res.setHeader(key, val);
+        const lowerKey = key.toLowerCase();
+        if (['content-type', 'content-length', 'accept-ranges', 'content-range'].includes(lowerKey)) {
+          res.setHeader(key, val);
+        }
       });
       res.setHeader('Access-Control-Allow-Origin', '*');
 
