@@ -17,6 +17,7 @@ import { auth, db } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { collection, doc, setDoc, serverTimestamp, getDocs, addDoc, query, orderBy, limit } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from './lib/firestore_errors';
+import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -62,7 +63,11 @@ export default function App() {
       });
       setTasteMemories(memories);
     } catch (e) {
-      handleFirestoreError(e, OperationType.GET, `users/${user.uid}/taste_memory`);
+      try {
+        handleFirestoreError(e, OperationType.GET, `users/${user.uid}/taste_memory`);
+      } catch (err) {
+        // Suppress thrown error from handleFirestoreError to avoid unhandled rejection
+      }
     }
   };
 
@@ -95,7 +100,11 @@ export default function App() {
         createdAt: serverTimestamp()
       });
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `users/${firebaseUser.uid}/sessions/${sessionId}`);
+      try {
+        handleFirestoreError(error, OperationType.WRITE, `users/${firebaseUser.uid}/sessions/${sessionId}`);
+      } catch (err) {
+        // Suppress thrown error from handleFirestoreError to avoid unhandled rejection
+      }
     }
   };
 
@@ -528,24 +537,58 @@ export default function App() {
           <div className="bg-surface-variant/40 backdrop-blur-2xl rounded-[32px] p-6 border-t border-l border-white/10 shadow-2xl flex flex-col gap-6 transform transition-all duration-500">
             <div className="flex justify-between items-start gap-4">
               <div className="flex flex-col gap-1 flex-1 min-w-0">
-                <h2 className="text-headline-md font-headline-md font-bold text-on-surface truncate">
-                  {currentTrack?.matchedSongDetail?.name || currentTrack?.trackName || 'Initializing Model'}
-                </h2>
-                <p className="text-body-md font-body-md text-on-surface-variant truncate">
-                  {currentTrack?.matchedSongDetail?.ar?.[0]?.name || currentTrack?.artist || 'Standby'}
-                </p>
+                <AnimatePresence mode="wait">
+                  <motion.h2 
+                    key={currentTrack?.matchedSongDetail?.name || currentTrack?.trackName || 'Initializing Model'}
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -5 }}
+                    transition={{ duration: 0.2 }}
+                    className="text-headline-md font-headline-md font-bold text-on-surface truncate"
+                  >
+                    {currentTrack?.matchedSongDetail?.name || currentTrack?.trackName || 'Initializing Model'}
+                  </motion.h2>
+                </AnimatePresence>
+                <AnimatePresence mode="wait">
+                  <motion.p 
+                    key={currentTrack?.matchedSongDetail?.ar?.[0]?.name || currentTrack?.artist || 'Standby'}
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -5 }}
+                    transition={{ duration: 0.2, delay: 0.1 }}
+                    className="text-body-md font-body-md text-on-surface-variant truncate"
+                  >
+                    {currentTrack?.matchedSongDetail?.ar?.[0]?.name || currentTrack?.artist || 'Standby'}
+                  </motion.p>
+                </AnimatePresence>
                 <MinimalLyrics lyrics={parsedLyrics} currentTime={currentTime} />
               </div>
               <div className="relative shrink-0 mt-2">
                 <div className={`absolute inset-0 bg-primary/30 blur-2xl rounded-full mix-blend-screen transition-all duration-1000 ${isPlaying ? 'scale-[1.3] opacity-100 animate-pulse-soft' : 'scale-100 opacity-50'}`}></div>
                 <div className="w-32 h-32 rounded-2xl overflow-hidden shadow-2xl border border-white/10 bg-surface/50 relative z-10 backdrop-blur-md">
-                  {(currentTrack?.imageUrl || currentTrack?.matchedSongDetail?.al?.picUrl) ? (
-                     <img src={currentTrack.imageUrl || currentTrack.matchedSongDetail?.al?.picUrl} className={`w-full h-full object-cover transition-transform duration-[20s] ease-linear ${isPlaying ? 'scale-110' : 'scale-100'}`} />
-                  ) : (
-                     <div className="w-full h-full flex items-center justify-center text-on-surface-variant/20">
-                       <span className="material-symbols-outlined text-[48px]">album</span>
-                     </div>
-                  )}
+                  <AnimatePresence mode="popLayout">
+                    {(currentTrack?.imageUrl || currentTrack?.matchedSongDetail?.al?.picUrl) ? (
+                       <motion.img 
+                         key={currentTrack?.imageUrl || currentTrack?.matchedSongDetail?.al?.picUrl}
+                         initial={{ opacity: 0, scale: 0.8, rotate: -5 }}
+                         animate={{ opacity: 1, scale: isPlaying ? 1.05 : 1, rotate: 0 }}
+                         exit={{ opacity: 0, scale: 1.1, rotate: 5 }}
+                         transition={{ duration: 0.5, ease: "easeOut" }}
+                         src={currentTrack.imageUrl || currentTrack.matchedSongDetail?.al?.picUrl} 
+                         className="w-full h-full object-cover origin-center" 
+                       />
+                    ) : (
+                       <motion.div 
+                         key="placeholder"
+                         initial={{ opacity: 0 }}
+                         animate={{ opacity: 1 }}
+                         exit={{ opacity: 0 }}
+                         className="w-full h-full flex items-center justify-center text-on-surface-variant/20 absolute inset-0"
+                       >
+                         <span className="material-symbols-outlined text-[48px]">album</span>
+                       </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               </div>
             </div>
