@@ -13,6 +13,7 @@ export interface TrackData {
   trackName?: string;
   artist?: string;
   audioUrl?: string;
+  imageUrl?: string;
   lyrics?: string;
   matchedSongDetail?: {
     name: string;

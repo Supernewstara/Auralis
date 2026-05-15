@@ -8,8 +8,10 @@ import { AmbientStatusBar } from './components/AmbientStatusBar';
 import { WaveformScrubber } from './components/WaveformScrubber';
 import { MinimalLyrics } from './components/MinimalLyrics';
 import { ModernChat } from './components/ModernChat';
+import { QueuePanel } from './components/QueuePanel';
 import { NeteaseLoginModal } from './components/NeteaseLoginModal';
 import { parseLyrics } from './utils/lyrics';
+import { getRandomStatus } from './utils/statusPool';
 import { UserProfile, RecommendationData } from './types';
 import { auth, db } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -33,6 +35,8 @@ export default function App() {
 
   const [loading, setLoading] = useState(false);
   const [agentStatus, setAgentStatus] = useState<string>('');
+  const [streamedText, setStreamedText] = useState<string>('');
+  const [isQueueExpanded, setIsQueueExpanded] = useState(false);
   const [timeStr, setTimeStr] = useState('');
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -154,7 +158,8 @@ export default function App() {
     const targetMood = overrideMood || sessionMood;
     setSessionMood(targetMood);
     setLoading(true);
-    setAgentStatus("Agent is thinking...");
+    setAgentStatus("思考中...");
+    setStreamedText("");
     
     try {
       let likedSongsStr = "";
@@ -216,14 +221,15 @@ export default function App() {
             try { data = JSON.parse(dataStr); } catch(e) {}
 
             if (eventType === 'tool_start') {
-               setAgentStatus(`Running tool: ${data.tool}...`);
+               setAgentStatus(getRandomStatus(data.tool));
             } else if (eventType === 'tool_end') {
-               setAgentStatus(`Tool ${data.tool} complete.`);
+               // do nothing or clear status momentarily
             } else if (eventType === 'chunk') {
                streamedReasoning += data.text || "";
-               setAgentStatus(`Agent is typing...`);
+               setStreamedText(prev => prev + (data.text || ""));
+               setAgentStatus("打字中...");
             } else if (eventType === 'update_memory') {
-               setAgentStatus(`Agent is taking notes...`);
+               setAgentStatus(getRandomStatus('update_user_memory'));
                if (firebaseUser) {
                  addDoc(collection(db, 'users', firebaseUser.uid, 'taste_memory'), {
                    fact: data.fact,
@@ -353,8 +359,9 @@ export default function App() {
            setRecommendation(prev => ({ ...prev, tracks: newTracks, reasoning: finalAiMsg }));
            setCurrentTrackIndex(0);
            
-           const firstTrack = newTracks?.[0];
-           if (firstTrack) {
+           if (newTracks.length === 1) {
+             const firstTrack = newTracks[0];
+             if (firstTrack) {
               if (firstTrack.audioUrl && firstTrack.audioUrl !== "vip_free_trial" && audioRef.current) {
                 audioRef.current.src = "/api/proxy-audio?url=" + encodeURIComponent(firstTrack.audioUrl);
                 audioRef.current.load();
@@ -366,6 +373,18 @@ export default function App() {
                  setIsPlaying(false);
                  setMessages(prev => [...prev, {role: 'agent', content: `[System]: Track "${firstTrack.trackName}" by ${firstTrack.artist} restricts API access (VIP limited) or is unavailable.`}]);
               }
+             } else {
+                setIsPlaying(false);
+             }
+           } else if (newTracks.length > 1) {
+              setIsPlaying(false);
+              setIsQueueExpanded(true);
+              const revisedMsg = finalAiMsg + "\n\n给你挑了几首，点一首开始吧：";
+              setMessages(prev => {
+                const newArr = [...prev];
+                newArr[newArr.length - 1] = { role: 'agent', content: revisedMsg };
+                return newArr;
+              });
            } else {
               setIsPlaying(false);
            }
@@ -433,6 +452,36 @@ export default function App() {
   const prevTrack = () => {
     if (recommendation?.tracks && currentTrackIndex > 0) {
       playTrack(currentTrackIndex - 1);
+    }
+  };
+
+  const handleTrackRemove = (index: number) => {
+    setRecommendation(prev => {
+      if (!prev || !prev.tracks) return prev;
+      const newTracks = [...prev.tracks];
+      newTracks.splice(index, 1);
+      return { ...prev, tracks: newTracks };
+    });
+    if (index === currentTrackIndex) {
+       if (recommendation?.tracks && index < recommendation.tracks.length - 1) {
+          playTrack(index);
+       } else {
+          if (audioRef.current) {
+            audioRef.current.pause();
+            setIsPlaying(false);
+          }
+       }
+    } else if (index < currentTrackIndex) {
+       setCurrentTrackIndex(currentTrackIndex - 1);
+    }
+  };
+
+  const handleClearQueue = () => {
+    setRecommendation(prev => prev ? { ...prev, tracks: [] } : null);
+    setIsQueueExpanded(false);
+    if (audioRef.current) {
+      audioRef.current.pause();
+      setIsPlaying(false);
     }
   };
 
@@ -517,8 +566,8 @@ export default function App() {
               <div className="relative shrink-0 mt-2">
                 <div className={`absolute inset-0 bg-primary/30 blur-2xl rounded-full mix-blend-screen transition-all duration-1000 ${isPlaying ? 'scale-[1.3] opacity-100 animate-pulse-soft' : 'scale-100 opacity-50'}`}></div>
                 <div className="w-32 h-32 rounded-2xl overflow-hidden shadow-2xl border border-white/10 bg-surface/50 relative z-10 backdrop-blur-md">
-                  {currentTrack?.matchedSongDetail?.al?.picUrl ? (
-                     <img src={currentTrack.matchedSongDetail.al.picUrl} className={`w-full h-full object-cover transition-transform duration-[20s] ease-linear ${isPlaying ? 'scale-110' : 'scale-100'}`} />
+                  {(currentTrack?.imageUrl || currentTrack?.matchedSongDetail?.al?.picUrl) ? (
+                     <img src={currentTrack.imageUrl || currentTrack.matchedSongDetail?.al?.picUrl} className={`w-full h-full object-cover transition-transform duration-[20s] ease-linear ${isPlaying ? 'scale-110' : 'scale-100'}`} />
                   ) : (
                      <div className="w-full h-full flex items-center justify-center text-on-surface-variant/20">
                        <span className="material-symbols-outlined text-[48px]">album</span>
@@ -548,8 +597,18 @@ export default function App() {
               </button>
             </div>
           </div>
+          
+          <QueuePanel 
+            tracks={recommendation?.tracks || []} 
+            currentIndex={currentTrackIndex}
+            onSelect={(idx) => playTrack(idx)}
+            onRemove={handleTrackRemove}
+            onClear={handleClearQueue}
+            isExpanded={isQueueExpanded}
+            onToggleExpand={() => setIsQueueExpanded(!isQueueExpanded)}
+          />
 
-          <ModernChat messages={messages} onSend={(txt) => fetchAudioRecommendation(undefined, txt)} loading={loading} agentStatus={agentStatus} />
+          <ModernChat messages={messages} onSend={(txt) => fetchAudioRecommendation(undefined, txt)} loading={loading} agentStatus={agentStatus} streamedText={streamedText} />
         </div>
       </main>
 
