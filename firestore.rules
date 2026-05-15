@@ -41,6 +41,14 @@ service cloud.firestore {
              data.createdAt is timestamp;
     }
 
+    // TasteMemory Entity Validation
+    function isValidTasteMemory(data) {
+      return data.keys().hasAll(['fact', 'category', 'createdAt']) &&
+             data.fact is string && data.fact.size() <= 1000 &&
+             data.category is string && (data.category == 'genre_preference' || data.category == 'artist_opinion' || data.category == 'personal_note' || data.category == 'feedback') &&
+             data.createdAt is timestamp;
+    }
+
     // Users Collection
     match /users/{userId} {
       allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
@@ -67,6 +75,16 @@ service cloud.firestore {
                        incoming().updatedAt == request.time && incoming().userId == existing().userId &&
                        incoming().diff(existing()).affectedKeys().hasOnly(['title', 'updatedAt']);
       allow delete: if isSignedIn() && isValidId(userId) && request.auth.uid == userId && isValidId(sessionId);
+    }
+
+    // Taste Memory Collection
+    match /users/{userId}/taste_memory/{memoryId} {
+      allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId && isValidId(memoryId);
+      allow list: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+      allow create: if isSignedIn() && isValidId(userId) && request.auth.uid == userId && isValidId(memoryId) &&
+                       isValidTasteMemory(incoming()) && incoming().createdAt == request.time &&
+                       exists(/databases/$(database)/documents/users/$(userId));
+      allow delete: if isSignedIn() && isValidId(userId) && request.auth.uid == userId && isValidId(memoryId);
     }
 
     // Messages Collection

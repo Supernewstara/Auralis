@@ -34,12 +34,27 @@
         "createdAt": { "type": "number" }
       },
       "required": ["role", "content", "createdAt"]
+    },
+    "TasteMemory": {
+      "title": "Taste Memory",
+      "description": "A long-term memory fact about the user's music taste",
+      "type": "object",
+      "properties": {
+        "fact": { "type": "string" },
+        "category": { "type": "string", "enum": ["genre_preference", "artist_opinion", "personal_note", "feedback"] },
+        "createdAt": { "type": "number", "description": "Server timestamp" }
+      },
+      "required": ["fact", "category", "createdAt"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/User" },
       "description": "User profile data."
+    },
+    "/users/{userId}/taste_memory/{memoryId}": {
+      "schema": { "$ref": "#/entities/TasteMemory" },
+      "description": "User's long term music taste memory."
     },
     "/users/{userId}/sessions/{sessionId}": {
       "schema": { "$ref": "#/entities/ChatSession" },

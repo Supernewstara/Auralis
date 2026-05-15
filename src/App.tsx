@@ -13,7 +13,7 @@ import { parseLyrics } from './utils/lyrics';
 import { UserProfile, RecommendationData } from './types';
 import { auth, db } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import { collection, doc, setDoc, serverTimestamp, getDocs } from 'firebase/firestore';
+import { collection, doc, setDoc, serverTimestamp, getDocs, addDoc, query, orderBy, limit } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from './lib/firestore_errors';
 
 export default function App() {
@@ -37,6 +37,7 @@ export default function App() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [firebaseUser, setFirebaseUser] = useState<any>(null);
+  const [tasteMemories, setTasteMemories] = useState<any[]>([]);
   const [sessionId, setSessionId] = useState<string>(Math.random().toString(36).substring(7));
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -46,9 +47,27 @@ export default function App() {
   ]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  const fetchTasteMemories = async (user: any) => {
+    if (!user) return;
+    try {
+      const q = query(collection(db, 'users', user.uid, 'taste_memory'), orderBy('createdAt', 'desc'), limit(10));
+      const querySnapshot = await getDocs(q);
+      const memories: any[] = [];
+      querySnapshot.forEach((doc) => {
+        memories.push({ id: doc.id, ...doc.data() });
+      });
+      setTasteMemories(memories);
+    } catch (e) {
+      handleFirestoreError(e, OperationType.GET, `users/${user.uid}/taste_memory`);
+    }
+  };
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       setFirebaseUser(user);
+      if (user) {
+        fetchTasteMemories(user);
+      }
     });
     return () => unsub();
   }, []);
@@ -161,6 +180,7 @@ export default function App() {
             userStatus: userPrompt,
             userLikedSongsSample: likedSongsStr || "N/A",
             conversationHistory: messages,
+            memories: tasteMemories,
             playerState: {
               isPlaying,
               currentTrack: recommendation?.tracks?.[currentTrackIndex]?.trackName || null,
@@ -202,6 +222,17 @@ export default function App() {
             } else if (eventType === 'chunk') {
                streamedReasoning += data.text || "";
                setAgentStatus(`Agent is typing...`);
+            } else if (eventType === 'update_memory') {
+               setAgentStatus(`Agent is taking notes...`);
+               if (firebaseUser) {
+                 addDoc(collection(db, 'users', firebaseUser.uid, 'taste_memory'), {
+                   fact: data.fact,
+                   category: data.category,
+                   createdAt: serverTimestamp()
+                 }).then(() => {
+                   fetchTasteMemories(firebaseUser); // Refresh the memories
+                 }).catch(console.error);
+               }
             } else if (eventType === 'done') {
                jsonResponse = data;
             } else if (eventType === 'error') {

@@ -120,6 +120,21 @@ export const toolDefinitions: OpenAI.Chat.Completions.ChatCompletionTool[] = [
         required: ["text"]
       }
     }
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_user_memory",
+      description: "Record important facts about the user's music preferences, personal context, or reactions. Call this when the user says something like '我不喜欢重金属', '其实我也挺喜欢民谣的', '今天心情不太好', etc. Always record negative feedback (dislikes, skips, complaints) proactively.",
+      parameters: {
+        type: "object",
+        properties: {
+          fact: { type: "string", description: "The specific fact to remember, e.g. '我不喜欢重金属' or 'Recently likes Taylor Swift'." },
+          category: { type: "string", enum: ["genre_preference", "artist_opinion", "personal_note", "feedback"], description: "The category of the memory." }
+        },
+        required: ["fact", "category"]
+      }
+    }
   }
 ];
 

@@ -8,11 +8,18 @@ export function generateSystemRole(): string {
 }
 
 export function generateDecisionPrompt(profileStr: string, enhancedContext: string, rawContext: any): string {
+  const memoriesList = (rawContext.memories || []).map((m: any) => {
+    const date = m.createdAt?.seconds ? new Date(m.createdAt.seconds * 1000).toISOString().split('T')[0] : '最近';
+    return `- ${date}: ${m.fact} (${m.category})`;
+  }).join('\n');
+
+  const memoryBlock = memoriesList ? `\n--- 关于小航的长期记忆 ---\n${memoriesList}\n` : '';
+
   return `
 --- 基础画像层 ---
 [Taste Profile (用户长期品味提取)]:
 ${profileStr}
-
+${memoryBlock}
 --- 上下文感知层 ---
 ${enhancedContext}
 

@@ -173,6 +173,16 @@ export async function processRecommendation(reqData: RecommendRequest) {
             finalReasoning = finalReasoning ? finalReasoning + "\n" + args.text : args.text;
             finalAction = "resume";
             done = true;
+          } else if (functionName === "update_user_memory") {
+            // Emitting custom event, the client will catch this and save to Firebase
+            if (reqData.onEvent) {
+              reqData.onEvent("update_memory", {
+                fact: args.fact,
+                category: args.category
+              });
+            }
+            resultContent = "Memory updated successfully";
+            // We do NOT set done = true because they should continue with other tool calls if needed
           } else if (functionName === "search_track") {
             const result = await NeteaseCloudMusicApi.search({ keywords: args.query, limit: 5, cookie: reqData.cookie });
             if (result.status === 200) {
