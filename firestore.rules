@@ -1,0 +1,82 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Primitive Definition
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isSignedIn() { return request.auth != null; }
+    
+    // User Entity Validation
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'createdAt', 'updatedAt']) &&
+             data.keys().size() >= 3 &&
+             data.uid is string && data.uid.size() <= 128 && data.uid == request.auth.uid &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
+    }
+
+    // ChatSession Entity Validation
+    function isValidChatSession(data) {
+      return data.keys().hasAll(['userId', 'title', 'createdAt', 'updatedAt']) &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.title is string && data.title.size() <= 200 &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
+    }
+
+    // Message Entity Validation
+    function isValidMessage(data) {
+      return data.keys().hasAll(['role', 'content', 'createdAt']) &&
+             data.role is string && (data.role == 'user' || data.role == 'agent') &&
+             data.content is string && data.content.size() <= 50000 &&
+             data.createdAt is timestamp;
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+      // No allow list for users
+      allow create: if isSignedIn() && isValidId(userId) && request.auth.uid == userId &&
+                       isValidUser(incoming()) && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if isSignedIn() && isValidId(userId) && request.auth.uid == userId &&
+                       isValidUser(incoming()) && incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt == request.time &&
+                       incoming().uid == existing().uid &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['neteaseId', 'updatedAt']);
+    }
+
+    // Sessions Collection
+    match /users/{userId}/sessions/{sessionId} {
+      allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId && isValidId(sessionId);
+      allow list: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+      allow create: if isSignedIn() && isValidId(userId) && request.auth.uid == userId && isValidId(sessionId) &&
+                       isValidChatSession(incoming()) && incoming().userId == request.auth.uid &&
+                       incoming().createdAt == request.time && incoming().updatedAt == request.time &&
+                       exists(/databases/$(database)/documents/users/$(userId));
+      allow update: if isSignedIn() && isValidId(userId) && request.auth.uid == userId && isValidId(sessionId) &&
+                       isValidChatSession(incoming()) && incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt == request.time && incoming().userId == existing().userId &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['title', 'updatedAt']);
+      allow delete: if isSignedIn() && isValidId(userId) && request.auth.uid == userId && isValidId(sessionId);
+    }
+
+    // Messages Collection
+    match /users/{userId}/sessions/{sessionId}/messages/{messageId} {
+      allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId && isValidId(sessionId) && isValidId(messageId);
+      allow list: if isSignedIn() && isValidId(userId) && request.auth.uid == userId && isValidId(sessionId);
+      allow create: if isSignedIn() && isValidId(userId) && request.auth.uid == userId && isValidId(sessionId) && isValidId(messageId) &&
+                       isValidMessage(incoming()) && incoming().createdAt == request.time &&
+                       exists(/databases/$(database)/documents/users/$(userId)/sessions/$(sessionId));
+      // No update for messages (immutable)
+    }
+  }
+}

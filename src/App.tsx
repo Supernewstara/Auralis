@@ -1,0 +1,543 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { AmbientStatusBar } from './components/AmbientStatusBar';
+import { WaveformScrubber } from './components/WaveformScrubber';
+import { MinimalLyrics } from './components/MinimalLyrics';
+import { ModernChat } from './components/ModernChat';
+import { NeteaseLoginModal } from './components/NeteaseLoginModal';
+import { parseLyrics } from './utils/lyrics';
+import { UserProfile, RecommendationData } from './types';
+import { auth, db } from './lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { collection, doc, setDoc, serverTimestamp, getDocs } from 'firebase/firestore';
+import { handleFirestoreError, OperationType } from './lib/firestore_errors';
+
+export default function App() {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [recommendation, setRecommendation] = useState<RecommendationData | null>(null);
+  const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
+
+  const recRef = useRef<RecommendationData | null>(null);
+  const idxRef = useRef(0);
+  const playRef = useRef(false);
+
+  useEffect(() => {
+     recRef.current = recommendation;
+     idxRef.current = currentTrackIndex;
+     playRef.current = isPlaying;
+  }, [recommendation, currentTrackIndex, isPlaying]);
+
+  const [loading, setLoading] = useState(false);
+  const [agentStatus, setAgentStatus] = useState<string>('');
+  const [timeStr, setTimeStr] = useState('');
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [firebaseUser, setFirebaseUser] = useState<any>(null);
+  const [sessionId, setSessionId] = useState<string>(Math.random().toString(36).substring(7));
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [sessionMood, setSessionMood] = useState('Deep focus');
+  const [messages, setMessages] = useState<{role: 'user'|'agent', content: string|React.ReactNode}[]>([
+    { role: 'agent', content: "Auralis Runtime Initiated. What environment can I build for you?" }
+  ]);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      setFirebaseUser(user);
+    });
+    return () => unsub();
+  }, []);
+
+  const saveMessageToFirebase = async (role: 'user'|'agent', content: string) => {
+    if (!firebaseUser) return;
+    try {
+      const sessionRef = doc(db, 'users', firebaseUser.uid, 'sessions', sessionId);
+      await setDoc(sessionRef, {
+        userId: firebaseUser.uid,
+        title: sessionMood,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+
+      const msgId = Math.random().toString(36).substring(7);
+      const msgRef = doc(sessionRef, 'messages', msgId);
+      await setDoc(msgRef, {
+        role,
+        content,
+        createdAt: serverTimestamp()
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `users/${firebaseUser.uid}/sessions/${sessionId}`);
+    }
+  };
+
+  const fetchUserStatus = () => {
+    fetch('/api/user/status')
+      .then(r => r.json())
+      .then(data => {
+        if (data.loggedIn) {
+          setUserProfile(data.user);
+          if (firebaseUser) {
+             setDoc(doc(db, 'users', firebaseUser.uid), {
+               neteaseId: data.user.userId?.toString(),
+               updatedAt: serverTimestamp()
+             }, { merge: true }).catch(console.error);
+          }
+        }
+      })
+      .catch(err => console.error(err));
+  };
+
+
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      setTimeStr(`${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`);
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 60000);
+
+    fetchUserStatus();
+      
+    return () => clearInterval(interval);
+  }, []);
+
+  const formatTime = (time: number) => {
+    if (!time || isNaN(time)) return "0:00";
+    const min = Math.floor(time / 60);
+    const sec = Math.floor(time % 60);
+    return `${min}:${sec.toString().padStart(2, '0')}`;
+  };
+
+  const fetchAudioRecommendation = async (overrideMood?: string, userPrompt?: string, autoplay = true) => {
+    if (userPrompt) {
+      setMessages(prev => [...prev, {role: 'user', content: userPrompt}]);
+      saveMessageToFirebase('user', userPrompt);
+      const lowerPrompt = userPrompt.toLowerCase();
+      if (/(暂停|停一下|别放了|stop|pause)/.test(lowerPrompt)) {
+         if (audioRef.current) {
+            audioRef.current.pause();
+            setIsPlaying(false);
+         }
+      } else if (/(继续|恢复|接着放|resume)/.test(lowerPrompt)) {
+         if (audioRef.current) {
+            audioRef.current.play().catch(() => setIsPlaying(false));
+            setIsPlaying(true);
+         }
+      }
+    }
+    
+    const targetMood = overrideMood || sessionMood;
+    setSessionMood(targetMood);
+    setLoading(true);
+    setAgentStatus("Agent is thinking...");
+    
+    try {
+      let likedSongsStr = "";
+      try {
+        const likeRes = await fetch('/api/netease/user/likelist');
+        const likeData = await likeRes.json();
+        if (likeData.success && likeData.songs?.length > 0) {
+          const sample = likeData.songs.slice(0, 10);
+          likedSongsStr = sample.map((s: { name: string, artist: string }) => `${s.name} - ${s.artist}`).join(', ');
+        }
+      } catch(e) {}
+
+      const res = await fetch('/api/recommend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+        body: JSON.stringify({
+          contextInfo: {
+            time: new Date().toLocaleTimeString(),
+            activity: "coding",
+            weather: "Rainy",
+            objective: targetMood,
+            energyLevel: "Mixed",
+            userStatus: userPrompt,
+            userLikedSongsSample: likedSongsStr || "N/A",
+            conversationHistory: messages,
+            playerState: {
+              isPlaying,
+              currentTrack: recommendation?.tracks?.[currentTrackIndex]?.trackName || null,
+              queueLength: recommendation?.tracks?.length || 0
+            }
+          }
+        })
+      });
+
+      if (!res.body) throw new Error("No response body");
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let jsonResponse: any = null;
+      let streamedReasoning = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const eventMatch = line.match(/event: (.*)\n/);
+          const dataMatch = line.match(/data: (.*)/);
+          
+          if (eventMatch && dataMatch) {
+            const eventType = eventMatch[1];
+            const dataStr = dataMatch[1];
+            let data: any = {};
+            try { data = JSON.parse(dataStr); } catch(e) {}
+
+            if (eventType === 'tool_start') {
+               setAgentStatus(`Running tool: ${data.tool}...`);
+            } else if (eventType === 'tool_end') {
+               setAgentStatus(`Tool ${data.tool} complete.`);
+            } else if (eventType === 'chunk') {
+               streamedReasoning += data.text || "";
+               setAgentStatus(`Agent is typing...`);
+            } else if (eventType === 'done') {
+               jsonResponse = data;
+            } else if (eventType === 'error') {
+               setMessages(prev => [...prev, {role: 'agent', content: 'API returned an error.'}]);
+               setLoading(false);
+               setAgentStatus("");
+               return;
+            }
+          }
+        }
+      }
+
+      setAgentStatus("");
+      setLoading(false);
+
+      if (jsonResponse && jsonResponse.success) {
+        const data = jsonResponse.data;
+        let aiMsg = data.reasoning || "";
+        if (!aiMsg && data.reasoningSteps?.length > 0) {
+          aiMsg = data.reasoningSteps.map((s: { step: string, detail: string }) => `[${s.step}]: ${s.detail}`).join('\n');
+        }
+        
+        const finalAiMsg = aiMsg || streamedReasoning || `Generating new soundscape based on your input.`;
+        console.log("Agent response ->", { act: data.action, tracksLength: data.tracks?.length, aiMsg: finalAiMsg });
+        setMessages(prev => [...prev, {
+          role: 'agent', 
+          content: finalAiMsg
+        }]);
+        saveMessageToFirebase('agent', finalAiMsg);
+
+        const act = data.action || "chat";
+        const newTracks = data.tracks || [];
+
+        const input = userPrompt?.toLowerCase() || '';
+        const userSaidPause = /(暂停|停一下|别放了|先停|stop|pause)/.test(input);
+        const userSaidResume = /(继续|恢复|接着放|resume)/.test(input);
+        const userSaidSkip = /(切歌|下一首|换一首|skip|next)/.test(input);
+
+        if (userSaidPause && act !== "pause") {
+           console.warn("Agent ignored pause command, overriding act to pause.");
+           setRecommendation(prev => prev ? { ...prev, reasoning: finalAiMsg } : null);
+           if (audioRef.current) {
+              audioRef.current.pause();
+              setIsPlaying(false);
+           }
+           setLoading(false);
+           return;
+        } else if (userSaidResume && act !== "resume") {
+           console.warn("Agent ignored resume command, overriding act to resume.");
+           setRecommendation(prev => prev ? { ...prev, reasoning: finalAiMsg } : null);
+           if (audioRef.current) {
+              audioRef.current.play().catch(() => setIsPlaying(false));
+              setIsPlaying(true);
+           }
+           setLoading(false);
+           return;
+        } else if (userSaidSkip && act !== "skip") {
+           console.warn("Agent ignored skip command, overriding act to skip.");
+           setRecommendation(prev => prev ? { ...prev, reasoning: finalAiMsg } : null);
+           const currentRec = recRef.current;
+           const currentIdx = idxRef.current;
+           if (currentRec?.tracks && currentIdx < currentRec.tracks.length - 1) {
+              const nextIdx = currentIdx + 1;
+              const track = currentRec.tracks[nextIdx];
+              setCurrentTrackIndex(nextIdx);
+              if (track.audioUrl && track.audioUrl !== "vip_free_trial" && audioRef.current) {
+                audioRef.current.src = "/api/proxy-audio?url=" + encodeURIComponent(track.audioUrl);
+                audioRef.current.load();
+                audioRef.current.play().catch(() => setIsPlaying(false));
+                setIsPlaying(true);
+              } else {
+                setIsPlaying(false);
+                setMessages(prev => [...prev, {role: 'agent', content: `[System]: Track "${track.trackName}" by ${track.artist} restricts API access (VIP limited) or is unavailable.`}]);
+              }
+           } else {
+              setMessages(prev => [...prev, {role: 'agent', content: "There are no more tracks in the queue to skip to."}]);
+           }
+           setLoading(false);
+           return;
+        }
+
+        if (act === "pause") {
+           setRecommendation(prev => prev ? { ...prev, reasoning: finalAiMsg } : null);
+           if (audioRef.current) {
+              audioRef.current.pause();
+              setIsPlaying(false);
+           }
+        }
+        else if (act === "resume") {
+           setRecommendation(prev => prev ? { ...prev, reasoning: finalAiMsg } : null);
+           if (audioRef.current) {
+              audioRef.current.play().catch(() => setIsPlaying(false));
+              setIsPlaying(true);
+           }
+        }
+        else if (act === "skip") {
+           setRecommendation(prev => prev ? { ...prev, reasoning: finalAiMsg } : null);
+           const currentRec = recRef.current;
+           const currentIdx = idxRef.current;
+           if (currentRec?.tracks && currentIdx < currentRec.tracks.length - 1) {
+              const nextIdx = currentIdx + 1;
+              const track = currentRec.tracks[nextIdx];
+              setCurrentTrackIndex(nextIdx);
+              if (track.audioUrl && track.audioUrl !== "vip_free_trial" && audioRef.current) {
+                audioRef.current.src = "/api/proxy-audio?url=" + encodeURIComponent(track.audioUrl);
+                audioRef.current.load();
+                audioRef.current.play().catch(() => setIsPlaying(false));
+                setIsPlaying(true);
+              } else {
+                setIsPlaying(false);
+                setMessages(prev => [...prev, {role: 'agent', content: `[System]: Track "${track.trackName}" by ${track.artist} restricts API access (VIP limited) or is unavailable.`}]);
+              }
+           } else {
+              setMessages(prev => [...prev, {role: 'agent', content: "There are no more tracks in the queue to skip to."}]);
+           }
+        }
+        else if (act === "replace" || (act === "chat" && newTracks.length > 0)) {
+           setRecommendation(prev => ({ ...prev, tracks: newTracks, reasoning: finalAiMsg }));
+           setCurrentTrackIndex(0);
+           
+           const firstTrack = newTracks?.[0];
+           if (firstTrack) {
+              if (firstTrack.audioUrl && firstTrack.audioUrl !== "vip_free_trial" && audioRef.current) {
+                audioRef.current.src = "/api/proxy-audio?url=" + encodeURIComponent(firstTrack.audioUrl);
+                audioRef.current.load();
+                if (autoplay) {
+                  audioRef.current.play().catch(() => setIsPlaying(false));
+                  setIsPlaying(true);
+                }
+              } else {
+                 setIsPlaying(false);
+                 setMessages(prev => [...prev, {role: 'agent', content: `[System]: Track "${firstTrack.trackName}" by ${firstTrack.artist} restricts API access (VIP limited) or is unavailable.`}]);
+              }
+           } else {
+              setIsPlaying(false);
+           }
+        } 
+        else if (act === "add") {
+           setRecommendation(prev => {
+              if (!prev || !prev.tracks) return { ...prev, tracks: newTracks, reasoning: finalAiMsg };
+              return { ...prev, tracks: [...prev.tracks, ...newTracks], reasoning: finalAiMsg };
+           });
+           if (!recRef.current?.tracks || recRef.current.tracks.length === 0) {
+               const track = newTracks[0];
+               if (track) {
+                   if (track.audioUrl && track.audioUrl !== "vip_free_trial" && audioRef.current) {
+                     audioRef.current.src = "/api/proxy-audio?url=" + encodeURIComponent(track.audioUrl);
+                     audioRef.current.load();
+                     if (autoplay) {
+                       audioRef.current.play().catch(() => setIsPlaying(false));
+                       setIsPlaying(true);
+                     }
+                   } else {
+                     setIsPlaying(false);
+                     setMessages(prev => [...prev, {role: 'agent', content: `[System]: Track "${track.trackName}" by ${track.artist} restricts API access (VIP limited) or is unavailable.`}]);
+                   }
+               }
+           }
+        } 
+        else {
+           // chat only 
+           setRecommendation(prev => prev ? { ...prev, reasoning: finalAiMsg } : null);
+        }
+      } else {
+        setMessages(prev => [...prev, {role: 'agent', content: 'Connection lost or API error.'}]);
+      }
+    } catch (e) {
+      setMessages(prev => [...prev, {role: 'agent', content: 'Connection lost or API error.'}]);
+    }
+    setLoading(false);
+  };
+
+  const playTrack = (index: number) => {
+    if (!recommendation?.tracks || !recommendation.tracks[index]) return;
+    const track = recommendation.tracks[index];
+    setCurrentTrackIndex(index);
+    if (track.audioUrl && track.audioUrl !== "vip_free_trial" && audioRef.current) {
+      audioRef.current.src = "/api/proxy-audio?url=" + encodeURIComponent(track.audioUrl);
+      audioRef.current.load();
+      audioRef.current.play().catch(() => setIsPlaying(false));
+      setIsPlaying(true);
+    } else {
+      setIsPlaying(false);
+      setMessages(prev => [...prev, {role: 'agent', content: `[System]: Track "${track.trackName}" by ${track.artist} restricts API access (VIP limited) or is unavailable.`}]);
+    }
+  };
+
+  const nextTrack = () => {
+    if (recommendation?.tracks) {
+      if (currentTrackIndex < recommendation.tracks.length - 1) {
+        playTrack(currentTrackIndex + 1);
+      } else {
+        fetchAudioRecommendation(undefined, "Keep playing similar tracks.");
+      }
+    }
+  };
+
+  const prevTrack = () => {
+    if (recommendation?.tracks && currentTrackIndex > 0) {
+      playTrack(currentTrackIndex - 1);
+    }
+  };
+
+  useEffect(() => {
+    fetchAudioRecommendation(undefined, undefined, false);
+  }, []);
+
+  const togglePlay = () => {
+    const currentTrack = recommendation?.tracks?.[currentTrackIndex];
+    if (!audioRef.current?.src || audioRef.current.src === window.location.href) {
+      if (currentTrack && !loading) {
+        playTrack(currentTrackIndex);
+      } else if (!recommendation && !loading) {
+        fetchAudioRecommendation();
+      }
+      return;
+    }
+    
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      audioRef.current.play().catch(() => setIsPlaying(false));
+      setIsPlaying(true);
+    }
+  };
+
+  const currentTrack = recommendation?.tracks?.[currentTrackIndex];
+  const parsedLyrics = useMemo(() => parseLyrics(currentTrack?.lyrics || ''), [currentTrack?.lyrics]);
+
+  return (
+    <div className="bg-background text-on-surface min-h-screen flex flex-col font-sans overflow-hidden relative">
+      <div className="weather-glow-container fixed inset-0 overflow-hidden pointer-events-none opacity-40">
+        <div className="absolute -top-[20%] -left-[10%] w-[80%] h-[80%] rounded-full bg-[#1E293B] blur-[120px] animate-float-slow opacity-60"></div>
+        <div className="absolute top-[30%] -right-[15%] w-[70%] h-[70%] rounded-full bg-[#2D2A3E] blur-[140px] animate-rotate-slow opacity-50" style={{animationDuration: '40s', animationDirection: 'reverse'}}></div>
+        <div className="absolute -bottom-[10%] left-[20%] w-[60%] h-[60%] rounded-full bg-[#0D9488] blur-[150px] animate-float-slow opacity-20" style={{animationDelay: '-5s'}}></div>
+        <div className="absolute inset-0 bg-background/20 backdrop-grayscale-[0.2]"></div>
+      </div>
+
+      <header className="bg-transparent w-full pt-8 px-6 flat no shadows z-20 shrink-0">
+        <div className="flex justify-between items-center w-full max-w-2xl mx-auto">
+          <button 
+             onClick={togglePlay}
+             className="text-primary hover:opacity-80 transition-opacity scale-95 duration-200 transition-transform flex items-center justify-center w-10 h-10 smooth-transition"
+          >
+            {isPlaying ? (
+              <span className="material-symbols-outlined animate-pulse-soft text-[28px]" style={{fontVariationSettings: "'FILL' 0"}}>graphic_eq</span>
+            ) : (
+              <span className="material-symbols-outlined text-[28px]" style={{fontVariationSettings: "'FILL' 1"}}>play_arrow</span>
+            )}
+          </button>
+          <h1 className="text-headline-md font-headline-md font-bold tracking-tight text-on-surface">Auralis</h1>
+          <button 
+            onClick={() => setIsLoginModalOpen(true)}
+            className="text-primary hover:opacity-80 transition-opacity scale-95 duration-200 transition-transform flex items-center justify-center w-10 h-10 smooth-transition"
+          >
+            {userProfile ? (
+              <img src={userProfile.avatarUrl} alt="User Avatar" className="w-8 h-8 rounded-full border border-white/20 shadow-md" title={userProfile.nickname} />
+            ) : (
+              <span className="material-symbols-outlined text-[24px]" style={{fontVariationSettings: "'FILL' 0"}}>person</span>
+            )}
+          </button>
+        </div>
+      </header>
+
+      <main className="flex-1 overflow-y-auto px-4 md:px-container-padding-desktop pb-6 pt-4 relative custom-scrollbar">
+        <div className="fixed top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-primary-container/10 rounded-full blur-[120px] pointer-events-none z-0"></div>
+        <div className="max-w-xl mx-auto flex flex-col gap-stack-md relative z-10 pb-16">
+          <AmbientStatusBar timeStr={timeStr} sessionMood={sessionMood} />
+          
+          <div className="bg-surface-variant/40 backdrop-blur-2xl rounded-[32px] p-6 border-t border-l border-white/10 shadow-2xl flex flex-col gap-6 transform transition-all duration-500">
+            <div className="flex justify-between items-start gap-4">
+              <div className="flex flex-col gap-1 flex-1 min-w-0">
+                <h2 className="text-headline-md font-headline-md font-bold text-on-surface truncate">
+                  {currentTrack?.matchedSongDetail?.name || currentTrack?.trackName || 'Initializing Model'}
+                </h2>
+                <p className="text-body-md font-body-md text-on-surface-variant truncate">
+                  {currentTrack?.matchedSongDetail?.ar?.[0]?.name || currentTrack?.artist || 'Standby'}
+                </p>
+                <MinimalLyrics lyrics={parsedLyrics} currentTime={currentTime} />
+              </div>
+              <div className="relative shrink-0 mt-2">
+                <div className={`absolute inset-0 bg-primary/30 blur-2xl rounded-full mix-blend-screen transition-all duration-1000 ${isPlaying ? 'scale-[1.3] opacity-100 animate-pulse-soft' : 'scale-100 opacity-50'}`}></div>
+                <div className="w-32 h-32 rounded-2xl overflow-hidden shadow-2xl border border-white/10 bg-surface/50 relative z-10 backdrop-blur-md">
+                  {currentTrack?.matchedSongDetail?.al?.picUrl ? (
+                     <img src={currentTrack.matchedSongDetail.al.picUrl} className={`w-full h-full object-cover transition-transform duration-[20s] ease-linear ${isPlaying ? 'scale-110' : 'scale-100'}`} />
+                  ) : (
+                     <div className="w-full h-full flex items-center justify-center text-on-surface-variant/20">
+                       <span className="material-symbols-outlined text-[48px]">album</span>
+                     </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 mt-2">
+              <button onClick={prevTrack} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/5 transition-colors text-on-surface-variant shrink-0">
+                 <span className="material-symbols-outlined text-[20px]">skip_previous</span>
+              </button>
+              <span className="text-label-sm font-label-sm text-on-surface-variant w-8 text-right shrink-0">{formatTime(currentTime)}</span>
+              <WaveformScrubber 
+                 duration={duration} 
+                 currentTime={currentTime} 
+                 audioUrl={currentTrack?.audioUrl ? `/api/proxy-audio?url=${encodeURIComponent(currentTrack.audioUrl)}` : undefined}
+                 onSeek={(pct) => {
+                 if (audioRef.current && duration) {
+                    audioRef.current.currentTime = pct * duration;
+                    setCurrentTime(pct * duration);
+                 }
+              }} />
+              <span className="text-label-sm font-label-sm text-on-surface-variant w-8 shrink-0">{formatTime(duration)}</span>
+              <button onClick={nextTrack} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/5 transition-colors text-on-surface-variant shrink-0">
+                 <span className="material-symbols-outlined text-[20px]">skip_next</span>
+              </button>
+            </div>
+          </div>
+
+          <ModernChat messages={messages} onSend={(txt) => fetchAudioRecommendation(undefined, txt)} loading={loading} agentStatus={agentStatus} />
+        </div>
+      </main>
+
+      <audio 
+        ref={audioRef} 
+        crossOrigin="anonymous"
+        onEnded={nextTrack} 
+        onTimeUpdate={() => { if(audioRef.current) setCurrentTime(audioRef.current.currentTime); }}
+        onLoadedMetadata={() => { if(audioRef.current) setDuration(audioRef.current.duration); }}
+      />
+      <NeteaseLoginModal 
+        isOpen={isLoginModalOpen} 
+        onClose={() => setIsLoginModalOpen(false)}
+        onSuccess={() => {
+          setIsLoginModalOpen(false);
+          fetchUserStatus();
+          fetchAudioRecommendation();
+        }}
+      />
+    </div>
+  );
+}
