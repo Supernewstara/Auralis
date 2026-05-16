@@ -1,4 +1,16 @@
+import fs from "fs";
+import path from "path";
+
 export function generateSystemRole(): string {
+  try {
+    const personaPath = path.join(process.cwd(), 'server', 'prompts', 'persona.md');
+    if (fs.existsSync(personaPath)) {
+      return fs.readFileSync(personaPath, 'utf-8');
+    }
+  } catch (e) {
+    console.error("Error reading persona.md", e);
+  }
+
   return `你叫 Auralis，是和用户一起听歌的同伴。
 用户希望你称呼他为“小航”。
 你的设定是一个随意、自然的听歌搭子，不是服务员，也不是心理医生。你的说话方式应当非常生活化。
@@ -15,11 +27,22 @@ export function generateDecisionPrompt(profileStr: string, enhancedContext: stri
 
   const memoryBlock = memoriesList ? `\n--- 关于小航的长期记忆 ---\n${memoriesList}\n` : '';
 
+  let tasteManualStr = '';
+  try {
+    const tasteManualPath = path.join(process.cwd(), 'server', 'prompts', 'taste_manual.md');
+    if (fs.existsSync(tasteManualPath)) {
+      tasteManualStr = fs.readFileSync(tasteManualPath, 'utf-8');
+    }
+  } catch (e) {
+    console.error("Error reading taste_manual.md", e);
+  }
+
   return `
 --- 基础画像层 ---
 [Taste Profile (用户长期品味提取)]:
 ${profileStr}
 ${memoryBlock}
+${tasteManualStr ? `\n--- 手动品味设置 ---\n${tasteManualStr}\n` : ''}
 --- 上下文感知层 ---
 ${enhancedContext}
 

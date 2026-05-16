@@ -16,7 +16,7 @@ export interface TasteStats {
 export function extractFeatures(songs: any[]): SongFeatures[] {
   return songs.map(s => {
     let publishYear = null;
-    if (s.publishTime || s.al?.pic_str) {
+    if (s.publishTime || s.al?.publishTime) {
       // publishTime isn't always perfectly accurate, but it's okay for estimation
       const date = new Date(s.publishTime || (s.al && s.al.publishTime));
       if (!isNaN(date.getFullYear()) && date.getFullYear() > 1900) {

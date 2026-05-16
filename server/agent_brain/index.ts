@@ -17,14 +17,22 @@ export async function processRecommendation(reqData: RecommendRequest) {
   const { enhancedContext, rawContext } = reqData;
 
   // 1. Load Taste Profile
-  let profileStr = "None extracted yet.";
+  let profileStr = "";
   try {
     const profilePath = path.join(process.cwd(), 'server', 'prompts', 'taste_profile.json');
     if (fs.existsSync(profilePath)) {
       profileStr = fs.readFileSync(profilePath, 'utf-8');
+    } else {
+      const manualPath = path.join(process.cwd(), 'server', 'prompts', 'taste_manual.md');
+      if (fs.existsSync(manualPath)) {
+        profileStr = fs.readFileSync(manualPath, 'utf-8');
+      } else {
+        profileStr = "None extracted yet.";
+      }
     }
   } catch (e) {
     console.error("Error reading taste profile", e);
+    profileStr = "None extracted yet.";
   }
 
   // 2. Generate Prompts

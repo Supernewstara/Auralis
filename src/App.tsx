@@ -48,6 +48,7 @@ export default function App() {
   const [duration, setDuration] = useState(0);
   const [sessionMood, setSessionMood] = useState('Deep focus');
   const [weatherData, setWeatherData] = useState({ icon: 'partly_cloudy_day', text: 'Clear / 22°C' });
+  const [isAnalyzingTaste, setIsAnalyzingTaste] = useState(false);
   const [messages, setMessages] = useState<{role: 'user'|'agent', content: string|React.ReactNode}[]>([
     { role: 'agent', content: "Auralis Runtime Initiated. What environment can I build for you?" }
   ]);
@@ -109,6 +110,23 @@ export default function App() {
     }
   };
 
+  const handleTasteProfileCheck = async (userData: any) => {
+    // Automatically trigger analysis if full profile missing
+    if (!userData.hasTasteProfile) {
+      setIsAnalyzingTaste(true);
+      setAgentStatus('Analyzing your flavor profile...');
+      try {
+        await fetch('/api/taste/analyze', { method: 'POST' });
+        setAgentStatus('Flavor profile created.');
+      } catch (e) {
+        console.error("Taste analysis failed", e);
+      } finally {
+        setIsAnalyzingTaste(false);
+        setAgentStatus('');
+      }
+    }
+  };
+
   const fetchUserStatus = () => {
     fetch('/api/user/status')
       .then(r => r.json())
@@ -123,6 +141,7 @@ export default function App() {
                try { handleFirestoreError(err, OperationType.WRITE, `users/${firebaseUser.uid}`); } catch (e) {}
              });
           }
+          handleTasteProfileCheck(data);
         }
       })
       .catch(() => {});

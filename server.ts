@@ -148,7 +148,9 @@ async function startServer() {
       const statusRes = await ncm.login_status({ cookie: globalCookie });
       const profile = (statusRes.body?.data as any)?.profile;
       if (profile && profile.userId) {
-         return res.json({ loggedIn: true, user: profile });
+         const profilePath = path.join(process.cwd(), 'server', 'prompts', 'taste_profile.json');
+         const hasTasteProfile = fs.existsSync(profilePath);
+         return res.json({ loggedIn: true, user: profile, hasTasteProfile });
       }
       return res.json({ loggedIn: false });
     } catch (e: any) {
