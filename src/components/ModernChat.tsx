@@ -1,7 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 
-export const ModernChat = ({ messages, onSend, loading, agentStatus, streamedText }: { messages: any[], onSend: (text: string) => void, loading: boolean, agentStatus?: string, streamedText?: string }) => {
+export interface ChatMessage {
+  role: 'user' | 'agent';
+  content: string | React.ReactNode;
+  options?: { label: string; prompt: string }[];
+  optionsDisabled?: boolean;
+}
+
+export const ModernChat = ({ messages, onSend, loading, agentStatus, streamedText, onChipClick }: { messages: ChatMessage[], onSend: (text: string) => void, loading: boolean, agentStatus?: string, streamedText?: string, onChipClick: (prompt: string, label: string) => void }) => {
   const [text, setText] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -45,9 +52,39 @@ export const ModernChat = ({ messages, onSend, loading, agentStatus, streamedTex
             )}
             <div className={`relative max-w-[85%] pt-1.5 ${msg.role === 'user' ? 'text-white/90 text-right' : 'text-white/80'} text-[15px] leading-[1.7] tracking-wide font-body-md`}>
                {typeof msg.content === 'string' ? (
-                  msg.content.split('\n').map((line: string, i: number) => (
-                    <span key={i} className="block mb-2 last:mb-0 min-h-[1.5em]">{line}</span>
-                  ))
+                  <>
+                    {msg.content.split('\n').map((line: string, i: number) => (
+                      <span key={i} className="block mb-2 last:mb-0 min-h-[1.5em]">{line}</span>
+                    ))}
+                    {msg.options && msg.options.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        {msg.options.map((opt, optIdx) => {
+                          const isDisabled = msg.optionsDisabled === true;
+                          return (
+                            <motion.button
+                              key={optIdx}
+                              initial={{ opacity: 0, y: 8, scale: 0.9 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              transition={{ duration: 0.25, delay: 0.08 * optIdx, ease: "easeOut" }}
+                              whileHover={isDisabled ? {} : { scale: 1.03 }}
+                              whileTap={isDisabled ? {} : { scale: 0.96 }}
+                              onClick={() => {
+                                if (!isDisabled) onChipClick(opt.prompt, opt.label);
+                              }}
+                              disabled={isDisabled}
+                              className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 select-none ${
+                                isDisabled
+                                  ? 'bg-white/5 border border-white/5 text-white/30 cursor-default'
+                                  : 'bg-white/10 hover:bg-white/20 border border-white/10 hover:border-white/20 text-white/85 hover:text-white cursor-pointer active:bg-primary/30 active:border-primary/40'
+                              }`}
+                            >
+                              {opt.label}
+                            </motion.button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
                ) : msg.content}
             </div>
           </motion.div>

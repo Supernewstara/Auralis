@@ -13,6 +13,14 @@ import { NeteaseLoginModal } from './components/NeteaseLoginModal';
 import { parseLyrics } from './utils/lyrics';
 import { getRandomStatus } from './utils/statusPool';
 import { UserProfile, RecommendationData } from './types';
+
+interface ChatMessage {
+  role: 'user' | 'agent';
+  content: string | React.ReactNode;
+  options?: { label: string; prompt: string }[];
+  optionsDisabled?: boolean;
+}
+
 import { auth, db } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { collection, doc, setDoc, serverTimestamp, getDocs, addDoc, query, orderBy, limit } from 'firebase/firestore';
@@ -50,7 +58,7 @@ export default function App() {
   const [weatherData, setWeatherData] = useState({ icon: 'partly_cloudy_day', text: 'Clear / 22°C' });
   const [isAnalyzingTaste, setIsAnalyzingTaste] = useState(false);
   const isAnalyzingRef = useRef(false);
-  const [messages, setMessages] = useState<{role: 'user'|'agent', content: string|React.ReactNode}[]>([
+  const [messages, setMessages] = useState<ChatMessage[]>([
     { role: 'agent', content: "Auralis Runtime Initiated. What environment can I build for you?" }
   ]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -185,6 +193,9 @@ export default function App() {
   const fetchAudioRecommendation = async (overrideMood?: string, userPrompt?: string, autoplay = true) => {
     if (userPrompt) {
       setMessages(prev => [...prev, {role: 'user', content: userPrompt}]);
+      setMessages(prev => prev.map(msg =>
+        msg.options ? { ...msg, optionsDisabled: true } : msg
+      ));
       saveMessageToFirebase('user', userPrompt);
       const lowerPrompt = userPrompt.toLowerCase();
       if (/(暂停|停一下|别放了|stop|pause)/.test(lowerPrompt)) {
@@ -246,6 +257,7 @@ export default function App() {
       let buffer = "";
       let jsonResponse: any = null;
       let streamedReasoning = "";
+      let suggestedOptions: { label: string; prompt: string }[] | null = null;
 
       while (true) {
         const { value, done } = await reader.read();
@@ -292,6 +304,10 @@ export default function App() {
                    try { handleFirestoreError(err, OperationType.WRITE, `users/${firebaseUser.uid}/taste_memory`); } catch (e) {}
                  });
                }
+            } else if (eventType === 'suggest_options') {
+               streamedReasoning = data.text || "";
+               setStreamedText(data.text || "");
+               suggestedOptions = data.options || [];
             } else if (eventType === 'done') {
                jsonResponse = data;
             } else if (eventType === 'error') {
@@ -316,10 +332,19 @@ export default function App() {
         
         const finalAiMsg = aiMsg || streamedReasoning || `Generating new soundscape based on your input.`;
         console.log("Agent response ->", { act: data.action, tracksLength: data.tracks?.length, aiMsg: finalAiMsg });
-        setMessages(prev => [...prev, {
-          role: 'agent', 
-          content: finalAiMsg
-        }]);
+        if (suggestedOptions && suggestedOptions.length > 0) {
+          setMessages(prev => [...prev, {
+            role: 'agent',
+            content: finalAiMsg,
+            options: suggestedOptions
+          }]);
+          suggestedOptions = null;
+        } else {
+          setMessages(prev => [...prev, {
+            role: 'agent',
+            content: finalAiMsg
+          }]);
+        }
         saveMessageToFirebase('agent', finalAiMsg);
 
         const act = data.action || "chat";
@@ -363,7 +388,11 @@ export default function App() {
            return;
         }
 
-        if (act === "pause") {
+        if (act === "suggest") {
+           setRecommendation(prev => prev ? { ...prev, reasoning: finalAiMsg } : null);
+           setLoading(false);
+           return;
+        } else if (act === "pause") {
            setRecommendation(prev => prev ? { ...prev, reasoning: finalAiMsg } : null);
            if (audioRef.current) {
               audioRef.current.pause();
@@ -446,6 +475,15 @@ export default function App() {
         body: JSON.stringify({ type, trackInfo })
       });
     } catch(e) {}
+  };
+
+  const handleChipClick = (prompt: string, label: string) => {
+    setMessages(prev => prev.map(msg =>
+      msg.options ? { ...msg, optionsDisabled: true } : msg
+    ));
+    setMessages(prev => [...prev, { role: 'user', content: label }]);
+    saveMessageToFirebase('user', label);
+    fetchAudioRecommendation(undefined, prompt);
   };
 
   const applyAndPlayTrack = (track: any, index: number, shouldPlay: boolean = true) => {
@@ -720,7 +758,7 @@ export default function App() {
             onToggleExpand={() => setIsQueueExpanded(!isQueueExpanded)}
           />
 
-          <ModernChat messages={messages} onSend={(txt) => fetchAudioRecommendation(undefined, txt)} loading={loading} agentStatus={agentStatus} streamedText={streamedText} />
+          <ModernChat messages={messages} onSend={(txt) => fetchAudioRecommendation(undefined, txt)} loading={loading} agentStatus={agentStatus} streamedText={streamedText} onChipClick={handleChipClick} />
         </div>
       </main>
 
