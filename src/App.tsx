@@ -35,14 +35,18 @@ export default function App() {
   const recRef = useRef<RecommendationData | null>(null);
   const idxRef = useRef(0);
   const playRef = useRef(false);
+  const loadingRef = useRef(false);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
      recRef.current = recommendation;
      idxRef.current = currentTrackIndex;
      playRef.current = isPlaying;
-  }, [recommendation, currentTrackIndex, isPlaying]);
+     loadingRef.current = loading;
+  }, [recommendation, currentTrackIndex, isPlaying, loading]);
 
-  const [loading, setLoading] = useState(false);
   const [agentStatus, setAgentStatus] = useState<string>('');
   const [streamedText, setStreamedText] = useState<string>('');
   const [isQueueExpanded, setIsQueueExpanded] = useState(false);
@@ -58,6 +62,7 @@ export default function App() {
   const [weatherData, setWeatherData] = useState({ icon: 'partly_cloudy_day', text: 'Clear / 22°C' });
   const [isAnalyzingTaste, setIsAnalyzingTaste] = useState(false);
   const isAnalyzingRef = useRef(false);
+  const [consecutiveSkips, setConsecutiveSkips] = useState(0);
   const [messages, setMessages] = useState<ChatMessage[]>([
     { role: 'agent', content: "Auralis Runtime Initiated. What environment can I build for you?" }
   ]);
@@ -191,7 +196,9 @@ export default function App() {
   };
 
   const fetchAudioRecommendation = async (overrideMood?: string, userPrompt?: string, autoplay = true) => {
+    resetIdleTimer();
     if (userPrompt) {
+      setConsecutiveSkips(0);
       setMessages(prev => [...prev, {role: 'user', content: userPrompt}]);
       setMessages(prev => prev.map(msg =>
         msg.options ? { ...msg, optionsDisabled: true } : msg
@@ -245,8 +252,10 @@ export default function App() {
             playerState: {
               isPlaying,
               currentTrack: recommendation?.tracks?.[currentTrackIndex]?.trackName || null,
-              queueLength: recommendation?.tracks?.length || 0
-            }
+              queueLength: recommendation?.tracks?.length || 0,
+              currentIndex: currentTrackIndex
+            },
+            consecutiveSkips: consecutiveSkips,
           }
         })
       });
@@ -389,6 +398,7 @@ export default function App() {
         }
 
         if (act === "suggest") {
+           setConsecutiveSkips(0);
            setRecommendation(prev => prev ? { ...prev, reasoning: finalAiMsg } : null);
            setLoading(false);
            return;
@@ -486,6 +496,15 @@ export default function App() {
     fetchAudioRecommendation(undefined, prompt);
   };
 
+  const resetIdleTimer = () => {
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    idleTimerRef.current = setTimeout(() => {
+      if (!loadingRef.current && !recRef.current?.tracks?.length) {
+        fetchAudioRecommendation(undefined, undefined, false);
+      }
+    }, 5 * 60 * 1000);
+  };
+
   const applyAndPlayTrack = (track: any, index: number, shouldPlay: boolean = true) => {
     if (!track) return;
     
@@ -519,12 +538,25 @@ export default function App() {
       if (isManualSkip) {
          const currentTrack = recommendation.tracks[currentTrackIndex];
          sendFeedback('skip', currentTrack);
+         setConsecutiveSkips(prev => {
+           const next = prev + 1;
+           if (next >= 3) {
+             setTimeout(() => {
+               fetchAudioRecommendation(undefined, undefined, false);
+             }, 500);
+           }
+           return next;
+         });
       }
 
       if (currentTrackIndex < recommendation.tracks.length - 1) {
         playTrack(currentTrackIndex + 1);
       } else {
-        fetchAudioRecommendation(undefined, "Keep playing similar tracks.");
+        if (isManualSkip) {
+          fetchAudioRecommendation(undefined, "Keep playing similar tracks.");
+        } else {
+          fetchAudioRecommendation(undefined, undefined, false);
+        }
       }
     }
   };
@@ -591,9 +623,12 @@ export default function App() {
 
   useEffect(() => {
     fetchAudioRecommendation(undefined, undefined, false);
+    resetIdleTimer();
+    return () => { if (idleTimerRef.current) clearTimeout(idleTimerRef.current); };
   }, []);
 
   const togglePlay = () => {
+    resetIdleTimer();
     const currentTrack = recommendation?.tracks?.[currentTrackIndex];
     const expectedSrc = currentTrack?.audioUrl && currentTrack.audioUrl !== "vip_free_trial"
         ? "/api/proxy-audio?url=" + encodeURIComponent(currentTrack.audioUrl)
