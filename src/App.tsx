@@ -432,6 +432,8 @@ export default function App() {
            }
         }
         else if (act === "replace" || (act === "chat" && newTracks.length > 0)) {
+           setConsecutiveSkips(0);
+           consecutiveSkipsRef.current = 0;
            setRecommendation(prev => ({ ...prev, tracks: newTracks, reasoning: finalAiMsg }));
            setCurrentTrackIndex(0);
            
@@ -456,6 +458,8 @@ export default function App() {
            }
         } 
         else if (act === "add") {
+           setConsecutiveSkips(0);
+           consecutiveSkipsRef.current = 0;
            setRecommendation(prev => {
               if (!prev || !prev.tracks) return { ...prev, tracks: newTracks, reasoning: finalAiMsg };
               return { ...prev, tracks: [...prev.tracks, ...newTracks], reasoning: finalAiMsg };
@@ -539,8 +543,6 @@ export default function App() {
 
   const nextTrack = (isManualSkip: boolean = true) => {
     if (recommendation?.tracks) {
-      const isEnd = currentTrackIndex >= recommendation.tracks.length - 1;
-
       if (isManualSkip) {
          const currentTrack = recommendation.tracks[currentTrackIndex];
          sendFeedback('skip', currentTrack);
@@ -552,17 +554,12 @@ export default function App() {
          if (nextSkips >= 3) {
             if (audioRef.current) audioRef.current.pause();
             setIsPlaying(false);
-            setTimeout(() => {
-              fetchAudioRecommendation(undefined, undefined, false);
-            }, 100);
+            fetchAudioRecommendation(undefined, undefined, false);
             return;
          }
-      } else {
-         consecutiveSkipsRef.current = 0;
-         setConsecutiveSkips(0);
       }
 
-      if (!isEnd) {
+      if (currentTrackIndex < recommendation.tracks.length - 1) {
         playTrack(currentTrackIndex + 1);
       } else {
         if (isManualSkip) {

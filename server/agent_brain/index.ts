@@ -103,8 +103,11 @@ export async function processRecommendation(reqData: RecommendRequest) {
         
         let args: any = {};
         try {
-          args = JSON.parse(argsStr);
-        } catch(e){}
+          args = JSON.parse(argsStr) || {};
+        } catch(e){
+          console.error(`Failed to parse arguments for ${functionName}:`, e);
+          // Don't fail immediately, some tools might work without args, or we want to send the parsing error back.
+        }
         
         if (reqData.onEvent) {
            reqData.onEvent('tool_start', { tool: functionName, args });
@@ -113,12 +116,12 @@ export async function processRecommendation(reqData: RecommendRequest) {
         let resultContent = "Success";
         try {
           if (functionName === "chat_reply") {
-            finalReasoning = finalReasoning ? finalReasoning + "\n" + args.text : args.text;
+            finalReasoning = finalReasoning ? finalReasoning + "\n" + (args.text || "") : (args.text || "");
             done = true;
           } else if (functionName === "play_tracks") {
-            finalReasoning = finalReasoning ? finalReasoning + "\n" + args.text : args.text;
+            finalReasoning = finalReasoning ? finalReasoning + "\n" + (args.text || "") : (args.text || "");
             finalAction = "replace";
-            if (args.track_ids && args.track_ids.length > 0) {
+            if (Array.isArray(args.track_ids) && args.track_ids.length > 0) {
               const detailResult = await NeteaseCloudMusicApi.song_detail({ ids: args.track_ids.join(','), cookie: reqData.cookie });
               const urlResult = await NeteaseCloudMusicApi.song_url_v1({ id: args.track_ids.join(','), level: 'exhigh', cookie: reqData.cookie } as any);
               
@@ -140,12 +143,14 @@ export async function processRecommendation(reqData: RecommendRequest) {
                     };
                  });
               }
+            } else {
+               resultContent = JSON.stringify({ error: "No track_ids provided or invalid format." });
             }
             done = true;
           } else if (functionName === "add_to_queue") {
-            finalReasoning = finalReasoning ? finalReasoning + "\n" + args.text : args.text;
+            finalReasoning = finalReasoning ? finalReasoning + "\n" + (args.text || "") : (args.text || "");
             finalAction = "add";
-            if (args.track_ids && args.track_ids.length > 0) {
+            if (Array.isArray(args.track_ids) && args.track_ids.length > 0) {
               const detailResult = await NeteaseCloudMusicApi.song_detail({ ids: args.track_ids.join(','), cookie: reqData.cookie });
               const urlResult = await NeteaseCloudMusicApi.song_url_v1({ id: args.track_ids.join(','), level: 'exhigh', cookie: reqData.cookie } as any);
               
@@ -167,22 +172,23 @@ export async function processRecommendation(reqData: RecommendRequest) {
                     };
                  });
               }
+            } else {
+               resultContent = JSON.stringify({ error: "No track_ids provided or invalid format." });
             }
             done = true;
           } else if (functionName === "skip_current") {
-            finalReasoning = finalReasoning ? finalReasoning + "\n" + args.text : args.text;
+            finalReasoning = finalReasoning ? finalReasoning + "\n" + (args.text || "") : (args.text || "");
             finalAction = "skip";
             done = true;
           } else if (functionName === "pause_playback") {
-            finalReasoning = finalReasoning ? finalReasoning + "\n" + args.text : args.text;
+            finalReasoning = finalReasoning ? finalReasoning + "\n" + (args.text || "") : (args.text || "");
             finalAction = "pause";
             done = true;
           } else if (functionName === "resume_playback") {
-            finalReasoning = finalReasoning ? finalReasoning + "\n" + args.text : args.text;
+            finalReasoning = finalReasoning ? finalReasoning + "\n" + (args.text || "") : (args.text || "");
             finalAction = "resume";
             done = true;
           } else if (functionName === "update_user_memory") {
-            // Emitting custom event, the client will catch this and save to Firebase
             if (reqData.onEvent) {
               reqData.onEvent("update_memory", {
                 fact: args.fact,
@@ -190,37 +196,41 @@ export async function processRecommendation(reqData: RecommendRequest) {
               });
             }
             resultContent = "Memory updated successfully";
-            // We do NOT set done = true because they should continue with other tool calls if needed
           } else if (functionName === "suggest_options") {
-            finalReasoning = args.text;
+            finalReasoning = args.text || "";
             finalAction = "suggest";
             if (reqData.onEvent) {
-              reqData.onEvent('suggest_options', { text: args.text, options: args.options || [] });
+              reqData.onEvent('suggest_options', { text: args.text || "", options: Array.isArray(args.options) ? args.options : [] });
             }
             done = true;
           } else if (functionName === "search_track") {
-            const result = await NeteaseCloudMusicApi.search({ keywords: args.query, limit: 5, cookie: reqData.cookie });
-            if (result.status === 200) {
-               const songs = (result.body.result as any)?.songs || [];
-               if (songs.length === 0) {
-                 resultContent = JSON.stringify({ found: false, query: args.query, suggestion: "Try different keywords or shorter query." });
-               } else {
-                 resultContent = JSON.stringify({
-                   found: true,
-                   tracks: songs.map((s: any) => ({
-                     name: s.name, 
-                     artist: s.ar?.map((a: any) => a.name).join(', '),
-                     id: s.id
-                   }))
-                 });
-               }
+            if (!args.query) {
+               resultContent = JSON.stringify({ found: false, error: "No query provided." });
             } else {
-               resultContent = JSON.stringify({ found: false, error: "Search failed." });
+               const result = await NeteaseCloudMusicApi.search({ keywords: args.query, limit: 5, cookie: reqData.cookie });
+               if (result.status === 200) {
+                  const songs = (result.body.result as any)?.songs || [];
+                  if (songs.length === 0) {
+                    resultContent = JSON.stringify({ found: false, query: args.query, suggestion: "Try different keywords or shorter query." });
+                  } else {
+                    resultContent = JSON.stringify({
+                      found: true,
+                      tracks: songs.map((s: any) => ({
+                        name: s.name, 
+                        artist: s.ar?.map((a: any) => a.name).join(', '),
+                        id: s.id
+                      }))
+                    });
+                  }
+               } else {
+                  resultContent = JSON.stringify({ found: false, error: "Search failed." });
+               }
             }
           }
         } catch(e: any) {
           console.error("Failed to execute tool:", e);
-          resultContent = "Error: " + e.message;
+          const errMsg = e && e.message ? e.message : (typeof e === 'object' ? JSON.stringify(e) : String(e));
+          resultContent = "Error: " + errMsg;
         }
 
         if (reqData.onEvent) {
