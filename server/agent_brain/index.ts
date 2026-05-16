@@ -58,6 +58,12 @@ export async function processRecommendation(reqData: RecommendRequest) {
   // The latest context/instructions go at the end to ensure they aren't ignored
   messages.push({ role: "system", content: userPrompt });
 
+  // Hard enforcement for consecutive skips: force suggest_options
+  const consecutiveSkips = (rawContext && rawContext.consecutiveSkips) || 0;
+  const activeTools = consecutiveSkips >= 3
+    ? toolDefinitions.filter(t => t.function.name === 'suggest_options')
+    : toolDefinitions;
+
   // 3. React Loop
   let loopCount = 0;
   let finalTracks: any[] = [];
@@ -70,7 +76,7 @@ export async function processRecommendation(reqData: RecommendRequest) {
     
     let response;
     try {
-      response = await chatCompletion(messages, toolDefinitions, "auto");
+      response = await chatCompletion(messages, activeTools, "auto");
     } catch (error) {
       console.error("LLM Error:", error);
       break;
