@@ -395,6 +395,10 @@ export default function App() {
            if (newTracks.length === 1) {
              applyAndPlayTrack(newTracks[0], 0, autoplay);
            } else if (newTracks.length > 1) {
+              if (audioRef.current) {
+                audioRef.current.pause();
+                audioRef.current.currentTime = 0;
+              }
               setIsPlaying(false);
               setIsQueueExpanded(true);
               const revisedMsg = finalAiMsg + "\n\n给你挑了几首，点一首开始吧：";
@@ -445,6 +449,13 @@ export default function App() {
 
   const applyAndPlayTrack = (track: any, index: number, shouldPlay: boolean = true) => {
     if (!track) return;
+    
+    // 先停止当前播放，避免新旧音频交叉
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+
     setCurrentTrackIndex(index);
     if (track.audioUrl && track.audioUrl !== "vip_free_trial" && audioRef.current) {
       audioRef.current.src = "/api/proxy-audio?url=" + encodeURIComponent(track.audioUrl);
