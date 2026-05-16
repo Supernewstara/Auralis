@@ -344,6 +344,29 @@ export default function App() {
         
         const finalAiMsg = aiMsg || streamedReasoning || `Generating new soundscape based on your input.`;
         console.log("Agent response ->", { act: data.action, tracksLength: data.tracks?.length, aiMsg: finalAiMsg });
+
+        // suggest 必须在 setMessages 之前处理，确保 options 被附加
+        if (data.action === "suggest") {
+           consecutiveSkipsRef.current = 0;
+           setConsecutiveSkips(0);
+           const displayOptions = (suggestedOptions && suggestedOptions.length > 0)
+             ? suggestedOptions
+             : [
+                 { label: '继续当前风格', prompt: '继续放类似的歌' },
+                 { label: '换换口味', prompt: '换一种完全不同风格的歌' },
+                 { label: '随便来点', prompt: '随便放几首歌' }
+               ];
+           setMessages(prev => [...prev, {
+             role: 'agent',
+             content: finalAiMsg,
+             options: displayOptions
+           }]);
+           saveMessageToFirebase('agent', finalAiMsg);
+           setRecommendation(prev => prev ? { ...prev, reasoning: finalAiMsg } : null);
+           setLoading(false);
+           return;
+        }
+
         if (suggestedOptions && suggestedOptions.length > 0) {
           setMessages(prev => [...prev, {
             role: 'agent',
@@ -400,13 +423,7 @@ export default function App() {
            return;
         }
 
-        if (act === "suggest") {
-           consecutiveSkipsRef.current = 0;
-           setConsecutiveSkips(0);
-           setRecommendation(prev => prev ? { ...prev, reasoning: finalAiMsg } : null);
-           setLoading(false);
-           return;
-        } else if (act === "pause") {
+        if (act === "pause") {
            setRecommendation(prev => prev ? { ...prev, reasoning: finalAiMsg } : null);
            if (audioRef.current) {
               audioRef.current.pause();
@@ -639,6 +656,13 @@ export default function App() {
 
   const togglePlay = () => {
     resetIdleTimer();
+
+    // 队列为空时，点播放应该触发推荐，而不是尝试播放
+    if (!recommendation?.tracks || recommendation.tracks.length === 0) {
+      if (!loading) fetchAudioRecommendation();
+      return;
+    }
+
     const currentTrack = recommendation?.tracks?.[currentTrackIndex];
     const expectedSrc = currentTrack?.audioUrl && currentTrack.audioUrl !== "vip_free_trial"
         ? "/api/proxy-audio?url=" + encodeURIComponent(currentTrack.audioUrl)
