@@ -207,8 +207,21 @@ export async function processRecommendation(reqData: RecommendRequest) {
           } else if (functionName === "suggest_options") {
             finalReasoning = args.text || "";
             finalAction = "suggest";
+
+            let finalOptions = Array.isArray(args.options) ? args.options.filter((o: any) => o && o.label && o.prompt) : [];
+
+            // Fallback: if Agent provided no valid options, generate defaults
+            if (finalOptions.length === 0) {
+              finalOptions = [
+                { label: '继续当前风格', prompt: '继续放类似的歌' },
+                { label: '换换口味', prompt: '换一种完全不同风格的歌' },
+                { label: '随便来点', prompt: '随便放几首歌' },
+                { label: '先不听了', prompt: '暂停播放' }
+              ];
+            }
+
             if (reqData.onEvent) {
-              reqData.onEvent('suggest_options', { text: args.text || "", options: Array.isArray(args.options) ? args.options : [] });
+              reqData.onEvent('suggest_options', { text: args.text || "", options: finalOptions });
             }
             done = true;
           } else if (functionName === "search_track") {
