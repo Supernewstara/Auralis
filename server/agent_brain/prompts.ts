@@ -27,22 +27,11 @@ export function generateDecisionPrompt(profileStr: string, enhancedContext: stri
 
   const memoryBlock = memoriesList ? `\n--- 关于小航的长期记忆 ---\n${memoriesList}\n` : '';
 
-  let tasteManualStr = '';
-  try {
-    const tasteManualPath = path.join(process.cwd(), 'server', 'prompts', 'taste_manual.md');
-    if (fs.existsSync(tasteManualPath)) {
-      tasteManualStr = fs.readFileSync(tasteManualPath, 'utf-8');
-    }
-  } catch (e) {
-    console.error("Error reading taste_manual.md", e);
-  }
-
   return `
 --- 基础画像层 ---
 [Taste Profile (用户长期品味提取)]:
 ${profileStr}
 ${memoryBlock}
-${tasteManualStr ? `\n--- 手动品味设置 ---\n${tasteManualStr}\n` : ''}
 --- 上下文感知层 ---
 ${enhancedContext}
 

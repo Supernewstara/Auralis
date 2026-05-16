@@ -49,6 +49,7 @@ export default function App() {
   const [sessionMood, setSessionMood] = useState('Deep focus');
   const [weatherData, setWeatherData] = useState({ icon: 'partly_cloudy_day', text: 'Clear / 22°C' });
   const [isAnalyzingTaste, setIsAnalyzingTaste] = useState(false);
+  const isAnalyzingRef = useRef(false);
   const [messages, setMessages] = useState<{role: 'user'|'agent', content: string|React.ReactNode}[]>([
     { role: 'agent', content: "Auralis Runtime Initiated. What environment can I build for you?" }
   ]);
@@ -112,7 +113,8 @@ export default function App() {
 
   const handleTasteProfileCheck = async (userData: any) => {
     // Automatically trigger analysis if full profile missing
-    if (!userData.hasTasteProfile) {
+    if (!userData.hasTasteProfile && !isAnalyzingRef.current) {
+      isAnalyzingRef.current = true;
       setIsAnalyzingTaste(true);
       setAgentStatus('Analyzing your flavor profile...');
       try {
@@ -121,6 +123,7 @@ export default function App() {
       } catch (e) {
         console.error("Taste analysis failed", e);
       } finally {
+        isAnalyzingRef.current = false;
         setIsAnalyzingTaste(false);
         setAgentStatus('');
       }
