@@ -397,6 +397,7 @@ export default function App() {
            } else if (newTracks.length > 1) {
               if (audioRef.current) {
                 audioRef.current.pause();
+                audioRef.current.removeAttribute('src');
                 audioRef.current.currentTime = 0;
               }
               setIsPlaying(false);
@@ -556,7 +557,13 @@ export default function App() {
 
   const togglePlay = () => {
     const currentTrack = recommendation?.tracks?.[currentTrackIndex];
-    if (!audioRef.current?.src || audioRef.current.src === window.location.href) {
+    const expectedSrc = currentTrack?.audioUrl && currentTrack.audioUrl !== "vip_free_trial"
+        ? "/api/proxy-audio?url=" + encodeURIComponent(currentTrack.audioUrl)
+        : null;
+
+    if (!audioRef.current?.src || 
+        audioRef.current.src === window.location.href ||
+        (expectedSrc && !audioRef.current.src.includes(expectedSrc))) {
       if (currentTrack && !loading) {
         playTrack(currentTrackIndex);
       } else if (!recommendation && !loading) {
