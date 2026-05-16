@@ -37,15 +37,9 @@ export default function App() {
   const playRef = useRef(false);
   const loadingRef = useRef(false);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const consecutiveSkipsRef = useRef(0);
 
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-     recRef.current = recommendation;
-     idxRef.current = currentTrackIndex;
-     playRef.current = isPlaying;
-     loadingRef.current = loading;
-  }, [recommendation, currentTrackIndex, isPlaying, loading]);
 
   const [agentStatus, setAgentStatus] = useState<string>('');
   const [streamedText, setStreamedText] = useState<string>('');
@@ -63,6 +57,14 @@ export default function App() {
   const [isAnalyzingTaste, setIsAnalyzingTaste] = useState(false);
   const isAnalyzingRef = useRef(false);
   const [consecutiveSkips, setConsecutiveSkips] = useState(0);
+
+  useEffect(() => {
+     recRef.current = recommendation;
+     idxRef.current = currentTrackIndex;
+     playRef.current = isPlaying;
+     loadingRef.current = loading;
+     consecutiveSkipsRef.current = consecutiveSkips;
+  }, [recommendation, currentTrackIndex, isPlaying, loading, consecutiveSkips]);
   const [messages, setMessages] = useState<ChatMessage[]>([
     { role: 'agent', content: "Auralis Runtime Initiated. What environment can I build for you?" }
   ]);
@@ -255,7 +257,7 @@ export default function App() {
               queueLength: recommendation?.tracks?.length || 0,
               currentIndex: currentTrackIndex
             },
-            consecutiveSkips: consecutiveSkips,
+            consecutiveSkips: consecutiveSkipsRef.current,
           }
         })
       });
