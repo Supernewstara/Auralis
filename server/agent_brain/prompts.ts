@@ -40,13 +40,16 @@ export function generateDecisionPrompt(profileStr: string, enhancedContext: stri
   let triggerAlert = '';
   if (consecutiveSkips >= 3) {
     triggerAlert = `
-╔══════════════════════════════════════════════════╗
-║  🚨 硬性指令：用户连续切歌 ${consecutiveSkips} 次！          ║
-║  你必须立即调用 suggest_options，给出 2-4 个      ║
-║  不同风格/方向让用户选择。                        ║
-║  只允许：suggest_options（本轮结束，等待点击）     ║
-║  禁止：search_track / play_tracks / chat_reply    ║
-╚══════════════════════════════════════════════════╝`;
+╔══════════════════════════════════════════════════════╗
+║  🚨 硬性指令：用户连续切歌 ${consecutiveSkips} 次！            ║
+║  你必须立即调用 suggest_options 工具！                 ║
+║  给出 2-4 个不同风格/方向让用户点击选择。              ║
+║                                                     ║
+║  绝对禁止：search_track / play_tracks / chat_reply   ║
+║  注意：用 chat_reply 打字问用户"想听什么"也不行！      ║
+║  只有 suggest_options 能渲染可点击的选项按钮。         ║
+║  用户看不到按钮 = 你的回答无效。                      ║
+╚══════════════════════════════════════════════════════╝`;
   } else if (isQueueExhausted && hasNoUserInput) {
     triggerAlert = `
 ┌──────────────────────────────────────────────────┐
@@ -83,7 +86,9 @@ ${JSON.stringify({ ...rawContext, conversationHistory: undefined }, null, 2)}
 这非常重要，关乎你的回答质量：
 0. 【suggest_options 硬性规则 — 优先级最高】：
    如果上方"当前状态"区域出现了 🚨 或 ⚠️ 或 💡 标记，你必须无条件执行标记中的指令。
-   连续切歌次数 >= 3 时，唯一能调用的工具就是 suggest_options。不要自作聪明去搜歌！
+   连续切歌次数 >= 3 时，唯一能调用的工具就是 suggest_options。
+   注意区分：chat_reply 只是聊天文字，不能渲染按钮；suggest_options 才能渲染可点击选项。
+   用 chat_reply 问"想听什么"而不用 suggest_options，用户就只能打字回复，体验很差。
 1. 【行动链路】：如果你判断需要放歌给用户听，不要凭空捏造歌曲，请遵循以下神圣的执行顺序：
    第1步：直接默默调用 search_track 工具（绝对不要在这个阶段调用 chat_reply 告诉用户你在找歌！）。
    第2步：拿到 search_track 结果后，调用 play_tracks 或 add_to_queue，**并将你要对用户说的话写在这些工具的 text 参数里！**
@@ -102,7 +107,7 @@ ${JSON.stringify({ ...rawContext, conversationHistory: undefined }, null, 2)}
    - 用户问关于音乐的问题（如“这首歌什么风格”、“你听过XX吗”、“你觉得摇滚怎么样”）→ 纯聊天讨论，不涉及播放。调用 chat_reply。
    - 用户表达负面反馈（“不喜欢”、“不是我要的”、“太吵了”、“换个风格”）→ 立刻：第1步调用 update_user_memory 记录偏好，第2步调用 search_track 找替代歌曲，第3步 play_tracks。不要用 chat_reply 描述替代歌曲而不播放！
    - 用户表达正面反馈（“这首不错”、“以后多推这种”）→ 调用 update_user_memory 记录下来，可以在 play_tracks 的 text 里顺便聊一句。
-   - 用户表达犹豫（“不知道听什么”、“随便”、“都行”、“换换口味”），或者会话刚开始并没有特定指令，或者连续切歌超过 3 次，或者当歌单放完时 → 调用 suggest_options 给出 2-4 个方向让用户选，不要直接搜索。
+   - 用户表达犹豫（“不知道听什么”、“随便”、“都行”、“换换口味”），或者会话刚开始并没有特定指令，或者连续切歌超过 3 次，或者当歌单放完时 → 调用 suggest_options 给出 2-4 个方向让用户选择。绝对不要用 chat_reply 来代替！chat_reply 问"想听什么"不会渲染按钮。
 7. 【工具选择】：
    - 彻底换一批歌听：search_track -> play_tracks
    - 加几首歌到当前队列：search_track -> add_to_queue

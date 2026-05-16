@@ -200,6 +200,7 @@ export default function App() {
   const fetchAudioRecommendation = async (overrideMood?: string, userPrompt?: string, autoplay = true) => {
     resetIdleTimer();
     if (userPrompt) {
+      consecutiveSkipsRef.current = 0;
       setConsecutiveSkips(0);
       setMessages(prev => [...prev, {role: 'user', content: userPrompt}]);
       setMessages(prev => prev.map(msg =>
@@ -400,6 +401,7 @@ export default function App() {
         }
 
         if (act === "suggest") {
+           consecutiveSkipsRef.current = 0;
            setConsecutiveSkips(0);
            setRecommendation(prev => prev ? { ...prev, reasoning: finalAiMsg } : null);
            setLoading(false);
@@ -537,21 +539,30 @@ export default function App() {
 
   const nextTrack = (isManualSkip: boolean = true) => {
     if (recommendation?.tracks) {
+      const isEnd = currentTrackIndex >= recommendation.tracks.length - 1;
+
       if (isManualSkip) {
          const currentTrack = recommendation.tracks[currentTrackIndex];
          sendFeedback('skip', currentTrack);
-         setConsecutiveSkips(prev => {
-           const next = prev + 1;
-           if (next >= 3) {
-             setTimeout(() => {
-               fetchAudioRecommendation(undefined, undefined, false);
-             }, 500);
-           }
-           return next;
-         });
+         
+         const nextSkips = consecutiveSkipsRef.current + 1;
+         consecutiveSkipsRef.current = nextSkips;
+         setConsecutiveSkips(nextSkips);
+
+         if (nextSkips >= 3) {
+            if (audioRef.current) audioRef.current.pause();
+            setIsPlaying(false);
+            setTimeout(() => {
+              fetchAudioRecommendation(undefined, undefined, false);
+            }, 100);
+            return;
+         }
+      } else {
+         consecutiveSkipsRef.current = 0;
+         setConsecutiveSkips(0);
       }
 
-      if (currentTrackIndex < recommendation.tracks.length - 1) {
+      if (!isEnd) {
         playTrack(currentTrackIndex + 1);
       } else {
         if (isManualSkip) {
