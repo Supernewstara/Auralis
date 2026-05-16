@@ -11,11 +11,12 @@ export const WaveformScrubber = ({ duration, currentTime, onSeek, audioUrl }: { 
     }
 
     let isCancelled = false;
+    let audioCtx: AudioContext | null = null;
     
     const fetchPeaks = async () => {
       try {
         const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-        const audioCtx = new AudioContext();
+        audioCtx = new AudioContext();
         
         const response = await fetch(audioUrl);
         const arrayBuffer = await response.arrayBuffer();
@@ -48,12 +49,21 @@ export const WaveformScrubber = ({ duration, currentTime, onSeek, audioUrl }: { 
         if (!isCancelled) {
            setHeights(Array.from({length: bars}).map((_, i) => 12 + Math.sin(i * 0.5) * 8 + Math.random() * 10));
         }
+      } finally {
+        if (audioCtx && audioCtx.state !== 'closed') {
+          audioCtx.close().catch(() => {});
+        }
       }
     };
 
     fetchPeaks();
 
-    return () => { isCancelled = true; };
+    return () => { 
+      isCancelled = true; 
+      if (audioCtx && audioCtx.state !== 'closed') {
+        audioCtx.close().catch(() => {});
+      }
+    };
   }, [audioUrl]);
 
   const progressPercent = duration ? (currentTime / duration) : 0;

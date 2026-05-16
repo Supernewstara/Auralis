@@ -185,13 +185,13 @@ async function startServer() {
 
   app.post("/api/feedback", async (req, res) => {
     try {
-      const { type, trackId } = req.body; // type: 'skip' | 'love'
+      const { type, trackInfo } = req.body; // type: 'skip' | 'love'
       const { memoryStore } = await import('./server/context_layer/memory.js');
       
       if (type === 'skip') {
-        memoryStore.recordSkip(Number(trackId));
+        memoryStore.recordSkip(trackInfo);
       } else if (type === 'love') {
-        memoryStore.recordLove(Number(trackId));
+        memoryStore.recordLove(trackInfo);
       }
       res.json({ success: true });
     } catch(err: any) {

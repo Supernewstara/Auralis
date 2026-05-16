@@ -8,11 +8,12 @@ interface QueuePanelProps {
   onSelect: (index: number) => void;
   onRemove: (index: number) => void;
   onClear: () => void;
+  onRefresh: () => void;
   isExpanded: boolean;
   onToggleExpand: () => void;
 }
 
-export const QueuePanel: React.FC<QueuePanelProps> = ({ tracks, currentIndex, onSelect, onRemove, onClear, isExpanded, onToggleExpand }) => {
+export const QueuePanel: React.FC<QueuePanelProps> = ({ tracks, currentIndex, onSelect, onRemove, onClear, onRefresh, isExpanded, onToggleExpand }) => {
   if (!tracks || tracks.length === 0) return null;
 
   return (
@@ -21,9 +22,33 @@ export const QueuePanel: React.FC<QueuePanelProps> = ({ tracks, currentIndex, on
         className="flex items-center justify-between p-4 cursor-pointer hover:bg-white/5 transition-colors"
         onClick={onToggleExpand}
       >
-        <span className="text-secondary font-mono text-sm tracking-widest uppercase">
-          Queue ({tracks.length})
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-secondary font-mono text-sm tracking-widest uppercase">
+            Queue ({tracks.length})
+          </span>
+          <div className="flex items-center gap-1">
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect(0);
+              }}
+              className="text-primary hover:text-primary-variant transition-colors flex items-center justify-center p-1 rounded-full hover:bg-white/5"
+              title="Play All"
+            >
+              <span className="material-symbols-outlined text-[16px]">play_arrow</span>
+            </button>
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                onRefresh();
+              }}
+              className="text-primary hover:text-primary-variant transition-colors flex items-center justify-center p-1 rounded-full hover:bg-white/5"
+              title="Refresh Queue"
+            >
+              <span className="material-symbols-outlined text-[16px]">refresh</span>
+            </button>
+          </div>
+        </div>
         <button className="text-secondary hover:text-white transition-colors p-1">
           <motion.span 
             animate={{ rotate: isExpanded ? 180 : 0 }}

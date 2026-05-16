@@ -47,6 +47,7 @@ export default function App() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [sessionMood, setSessionMood] = useState('Deep focus');
+  const [weatherData, setWeatherData] = useState({ icon: 'partly_cloudy_day', text: 'Clear / 22°C' });
   const [messages, setMessages] = useState<{role: 'user'|'agent', content: string|React.ReactNode}[]>([
     { role: 'agent', content: "Auralis Runtime Initiated. What environment can I build for you?" }
   ]);
@@ -118,7 +119,9 @@ export default function App() {
              setDoc(doc(db, 'users', firebaseUser.uid), {
                neteaseId: data.user.userId?.toString(),
                updatedAt: serverTimestamp()
-             }, { merge: true }).catch(console.error);
+             }, { merge: true }).catch(err => {
+               try { handleFirestoreError(err, OperationType.WRITE, `users/${firebaseUser.uid}`); } catch (e) {}
+             });
           }
         }
       })
@@ -130,6 +133,17 @@ export default function App() {
     const updateTime = () => {
       const now = new Date();
       setTimeStr(`${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`);
+      
+      const hour = now.getHours();
+      if (hour >= 6 && hour < 12) {
+        setWeatherData({ icon: 'light_mode', text: 'Morning Sun / 18°C' });
+      } else if (hour >= 12 && hour < 18) {
+        setWeatherData({ icon: 'partly_cloudy_day', text: 'Clear / 22°C' });
+      } else if (hour >= 18 && hour < 22) {
+        setWeatherData({ icon: 'clear_night', text: 'Evening / 16°C' });
+      } else {
+        setWeatherData({ icon: 'bedtime', text: 'Midnight / 12°C' });
+      }
     };
     updateTime();
     const interval = setInterval(updateTime, 60000);
@@ -252,7 +266,9 @@ export default function App() {
                    createdAt: serverTimestamp()
                  }).then(() => {
                    fetchTasteMemories(firebaseUser); // Refresh the memories
-                 }).catch(console.error);
+                 }).catch(err => {
+                   try { handleFirestoreError(err, OperationType.WRITE, `users/${firebaseUser.uid}/taste_memory`); } catch (e) {}
+                 });
                }
             } else if (eventType === 'done') {
                jsonResponse = data;
@@ -393,6 +409,18 @@ export default function App() {
     setLoading(false);
   };
 
+  const sendFeedback = async (type: 'skip' | 'love', track: any) => {
+    if (!track) return;
+    const trackInfo = `${track.trackName} - ${track.artist}`;
+    try {
+      await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, trackInfo })
+      });
+    } catch(e) {}
+  };
+
   const applyAndPlayTrack = (track: any, index: number, shouldPlay: boolean = true) => {
     if (!track) return;
     setCurrentTrackIndex(index);
@@ -414,8 +442,13 @@ export default function App() {
     applyAndPlayTrack(recommendation.tracks[index], index, true);
   };
 
-  const nextTrack = () => {
+  const nextTrack = (isManualSkip: boolean = true) => {
     if (recommendation?.tracks) {
+      if (isManualSkip) {
+         const currentTrack = recommendation.tracks[currentTrackIndex];
+         sendFeedback('skip', currentTrack);
+      }
+
       if (currentTrackIndex < recommendation.tracks.length - 1) {
         playTrack(currentTrackIndex + 1);
       } else {
@@ -431,33 +464,50 @@ export default function App() {
   };
 
   const handleTrackRemove = (index: number) => {
+    if (recommendation?.tracks) {
+       const trackToRemove = recommendation.tracks[index];
+       if (trackToRemove) {
+          sendFeedback('skip', trackToRemove);
+       }
+    }
+    
     setRecommendation(prev => {
       if (!prev || !prev.tracks) return prev;
       const newTracks = [...prev.tracks];
       newTracks.splice(index, 1);
+      
+      setCurrentTrackIndex(prevIndex => {
+        if (index === prevIndex) {
+           if (index < newTracks.length) {
+              // Same index, new track. Defer playing it until state settles?
+              // Side effect in set state is bad, let's defer it via setTimeout
+              setTimeout(() => {
+                 applyAndPlayTrack(newTracks[index], index, true);
+              }, 0);
+              return index;
+           } else {
+              setTimeout(() => {
+                 if (audioRef.current) {
+                   audioRef.current.pause();
+                   setIsPlaying(false);
+                 }
+              }, 0);
+              return Math.max(0, newTracks.length - 1);
+           }
+        } else if (index < prevIndex) {
+           return prevIndex - 1;
+        }
+        return prevIndex;
+      });
+
       return { ...prev, tracks: newTracks };
     });
-    
-    // Evaluate safely with local new array
-    if (recommendation?.tracks) {
-       const newTracks = [...recommendation.tracks];
-       newTracks.splice(index, 1);
-       if (index === currentTrackIndex) {
-          if (index < newTracks.length) {
-             applyAndPlayTrack(newTracks[index], index, true);
-          } else {
-             if (audioRef.current) {
-               audioRef.current.pause();
-               setIsPlaying(false);
-             }
-          }
-       } else if (index < currentTrackIndex) {
-          setCurrentTrackIndex(currentTrackIndex - 1);
-       }
-    }
   };
 
   const handleClearQueue = () => {
+    if (recommendation?.tracks) {
+        recommendation.tracks.forEach(track => sendFeedback('skip', track));
+    }
     setRecommendation(prev => prev ? { ...prev, tracks: [] } : null);
     setCurrentTrackIndex(0);
     setIsQueueExpanded(false);
@@ -532,7 +582,12 @@ export default function App() {
       <main className="flex-1 overflow-y-auto px-4 md:px-container-padding-desktop pb-6 pt-4 relative custom-scrollbar">
         <div className="fixed top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-primary-container/10 rounded-full blur-[120px] pointer-events-none z-0"></div>
         <div className="max-w-xl mx-auto flex flex-col gap-stack-md relative z-10 pb-16">
-          <AmbientStatusBar timeStr={timeStr} sessionMood={sessionMood} />
+          <AmbientStatusBar 
+            timeStr={timeStr} 
+            sessionMood={sessionMood} 
+            weatherIcon={weatherData.icon} 
+            weatherText={weatherData.text} 
+          />
           
           <div className="bg-surface-variant/40 backdrop-blur-2xl rounded-[32px] p-6 border-t border-l border-white/10 shadow-2xl flex flex-col gap-6 transform transition-all duration-500">
             <div className="flex justify-between items-start gap-4">
@@ -620,6 +675,7 @@ export default function App() {
             onSelect={(idx) => playTrack(idx)}
             onRemove={handleTrackRemove}
             onClear={handleClearQueue}
+            onRefresh={() => fetchAudioRecommendation(undefined, "换一批歌曲 (Refresh queue with new tracks)")}
             isExpanded={isQueueExpanded}
             onToggleExpand={() => setIsQueueExpanded(!isQueueExpanded)}
           />
@@ -631,7 +687,7 @@ export default function App() {
       <audio 
         ref={audioRef} 
         crossOrigin="anonymous"
-        onEnded={nextTrack} 
+        onEnded={() => nextTrack(false)} 
         onTimeUpdate={() => { if(audioRef.current) setCurrentTime(audioRef.current.currentTime); }}
         onLoadedMetadata={() => { if(audioRef.current) setDuration(audioRef.current.duration); }}
       />

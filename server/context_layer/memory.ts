@@ -2,8 +2,8 @@ import fs from 'fs';
 import path from 'path';
 
 export interface ShortTermMemory {
-  recentSkipped: number[]; // track IDs
-  recentLoved: number[];
+  recentSkipped: string[]; // track summaries (e.g., "Song - Artist")
+  recentLoved: string[];
   recentTopics: string[]; // what user recently asked for
 }
 
@@ -39,14 +39,14 @@ class MemoryStore {
     fs.writeFileSync(MEMORY_FILE, JSON.stringify(this.memory, null, 2), 'utf-8');
   }
 
-  recordSkip(trackId: number) {
-    this.memory.recentSkipped.push(trackId);
+  recordSkip(trackInfo: string) {
+    this.memory.recentSkipped.push(trackInfo);
     if (this.memory.recentSkipped.length > 50) this.memory.recentSkipped.shift();
     this.save();
   }
 
-  recordLove(trackId: number) {
-    this.memory.recentLoved.push(trackId);
+  recordLove(trackInfo: string) {
+    this.memory.recentLoved.push(trackInfo);
     if (this.memory.recentLoved.length > 50) this.memory.recentLoved.shift();
     this.save();
   }
@@ -58,11 +58,14 @@ class MemoryStore {
   }
 
   getMemoryContext(): string {
+    const skippedStr = this.memory.recentSkipped.length > 0 ? this.memory.recentSkipped.slice(-5).join(', ') : '无';
+    const lovedStr = this.memory.recentLoved.length > 0 ? this.memory.recentLoved.slice(-5).join(', ') : '无';
+    
     return `
 [近期互动记忆]
-- 最近跳过的歌曲数量: ${this.memory.recentSkipped.length}
-- 最近喜欢的歌曲数量: ${this.memory.recentLoved.length}
-- 最近聊到的主题: ${this.memory.recentTopics.join(', ')}
+- 最近跳过的歌曲: ${skippedStr}
+- 最近喜欢的歌曲: ${lovedStr}
+- 最近聊到的主题: ${this.memory.recentTopics.join(', ') || '无'}
 `.trim();
   }
 }
