@@ -191,6 +191,13 @@ export async function processRecommendation(reqData: RecommendRequest) {
             }
             resultContent = "Memory updated successfully";
             // We do NOT set done = true because they should continue with other tool calls if needed
+          } else if (functionName === "suggest_options") {
+            finalReasoning = args.text;
+            finalAction = "suggest";
+            if (reqData.onEvent) {
+              reqData.onEvent('suggest_options', { text: args.text, options: args.options || [] });
+            }
+            done = true;
           } else if (functionName === "search_track") {
             const result = await NeteaseCloudMusicApi.search({ keywords: args.query, limit: 5, cookie: reqData.cookie });
             if (result.status === 200) {

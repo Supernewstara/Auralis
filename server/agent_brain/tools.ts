@@ -135,6 +135,32 @@ export const toolDefinitions: OpenAI.Chat.Completions.ChatCompletionTool[] = [
         required: ["fact", "category"]
       }
     }
+  },
+  {
+    type: "function",
+    function: {
+      name: "suggest_options",
+      description: "向用户展示几个可点击的快捷选项。当用户犹豫不决（'不知道听什么'、'随便'）、连续切歌、会话刚开始、歌单放完时使用。调用后本轮结束，等待用户点击选项后的下一轮请求。",
+      parameters: {
+        type: "object",
+        properties: {
+          text: { type: "string", description: "搭话文字，随意自然，如'想听哪种感觉的？'" },
+          options: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                label: { type: "string", description: "选项短标签，2-6字，如'提神醒脑'" },
+                prompt: { type: "string", description: "用户点击后代表用户发给Agent的完整指令，如'来点有节奏感提神的歌'" }
+              },
+              required: ["label", "prompt"]
+            },
+            description: "2-4个选项，第一个是Agent最推荐的"
+          }
+        },
+        required: ["text", "options"]
+      }
+    }
   }
 ];
 
