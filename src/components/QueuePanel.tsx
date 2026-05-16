@@ -79,7 +79,7 @@ export const QueuePanel: React.FC<QueuePanelProps> = ({ tracks, currentIndex, on
                       animate={{ opacity: 1, x: 0, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.2 } }}
                       transition={{ duration: 0.25, ease: "easeOut" }}
-                      key={`${track.trackName}-${track.artist}`} // need a unique key if identical track is added multiple times, might need a more robust key but this is better than index for animation
+                      key={`${track.id || 't'}-${i}`}
                       className={`group flex items-center justify-between p-2 rounded-xl transition-all duration-200 cursor-pointer ${isActive ? 'bg-primary/20 hover:bg-primary/30 border border-primary/20' : 'hover:bg-white/10 border border-transparent'}`}
                       onClick={() => onSelect(i)}
                     >

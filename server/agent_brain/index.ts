@@ -130,18 +130,19 @@ export async function processRecommendation(reqData: RecommendRequest) {
                  const urls = urlResult.body.data as any[];
                  
                  finalTracks = args.track_ids.map((id: any) => {
-                    const song = songs.find(s => s.id == id);
-                    const urlInfo = urls.find(u => u.id == id);
+                    const song = songs.find((s: any) => s.id == id);
+                    if (!song) return null;
+                    const urlInfo = urls.find((u: any) => u.id == id);
                     const finalUrl = urlInfo?.url || (urlInfo?.freeTrialInfo ? "vip_free_trial" : "");
                     return {
                        id,
-                       trackName: song?.name || "Unknown Track",
-                       artist: song?.ar?.map((a:any) => a.name).join(', ') || "Unknown Artist",
-                       imageUrl: song?.al?.picUrl || "",
+                       trackName: song.name,
+                       artist: song.ar?.map((a:any) => a.name).join(', ') || "Unknown Artist",
+                       imageUrl: song.al?.picUrl || "",
                        audioUrl: finalUrl,
                        confidence: 'High'
                     };
-                 });
+                 }).filter(Boolean) as any[];
               }
             } else {
                resultContent = JSON.stringify({ error: "No track_ids provided or invalid format." });
@@ -159,18 +160,19 @@ export async function processRecommendation(reqData: RecommendRequest) {
                  const urls = urlResult.body.data as any[];
                  
                  finalTracks = args.track_ids.map((id: any) => {
-                    const song = songs.find(s => s.id == id);
-                    const urlInfo = urls.find(u => u.id == id);
+                    const song = songs.find((s: any) => s.id == id);
+                    if (!song) return null;
+                    const urlInfo = urls.find((u: any) => u.id == id);
                     const finalUrl = urlInfo?.url || (urlInfo?.freeTrialInfo ? "vip_free_trial" : "");
                     return {
                        id,
-                       trackName: song?.name || "Unknown Track",
-                       artist: song?.ar?.map((a:any) => a.name).join(', ') || "Unknown Artist",
-                       imageUrl: song?.al?.picUrl || "",
+                       trackName: song.name,
+                       artist: song.ar?.map((a:any) => a.name).join(', ') || "Unknown Artist",
+                       imageUrl: song.al?.picUrl || "",
                        audioUrl: finalUrl,
                        confidence: 'High'
                     };
-                 });
+                 }).filter(Boolean) as any[];
               }
             } else {
                resultContent = JSON.stringify({ error: "No track_ids provided or invalid format." });
