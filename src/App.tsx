@@ -199,6 +199,11 @@ export default function App() {
 
   const fetchAudioRecommendation = async (overrideMood?: string, userPrompt?: string, autoplay = true) => {
     resetIdleTimer();
+
+    // 防止并发请求互相覆盖
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+
     if (userPrompt) {
       consecutiveSkipsRef.current = 0;
       setConsecutiveSkips(0);
