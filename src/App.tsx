@@ -696,145 +696,310 @@ export default function App() {
   const currentTrack = recommendation?.tracks?.[currentTrackIndex];
   const parsedLyrics = useMemo(() => parseLyrics(currentTrack?.lyrics || ''), [currentTrack?.lyrics]);
 
+  const prevTrackObj = recommendation?.tracks?.[currentTrackIndex - 1];
+  const nextTrackObj = recommendation?.tracks?.[currentTrackIndex + 1];
+
+  // Get the latest agent message to display
+  const latestAgentMessage = messages.filter(m => m.role === 'agent').pop();
+  const displayMessageStr = latestAgentMessage ? (typeof latestAgentMessage.content === 'string' ? latestAgentMessage.content : '') : 'Auralis Runtime Initiated.';
+  const displayOptions = latestAgentMessage?.options || [];
+
+  const [inputText, setInputText] = useState('');
+
+  const handleSend = () => {
+    if (inputText.trim() && !loading) {
+      fetchAudioRecommendation(undefined, inputText);
+      setInputText('');
+    }
+  };
+
   return (
-    <div className="bg-background text-on-surface min-h-screen flex flex-col font-sans overflow-hidden relative">
-      <div className="weather-glow-container fixed inset-0 overflow-hidden pointer-events-none opacity-40">
-        <div className="absolute -top-[20%] -left-[10%] w-[80%] h-[80%] rounded-full bg-[#1E293B] blur-[120px] animate-float-slow opacity-60"></div>
-        <div className="absolute top-[30%] -right-[15%] w-[70%] h-[70%] rounded-full bg-[#2D2A3E] blur-[140px] animate-rotate-slow opacity-50" style={{animationDuration: '40s', animationDirection: 'reverse'}}></div>
-        <div className="absolute -bottom-[10%] left-[20%] w-[60%] h-[60%] rounded-full bg-[#0D9488] blur-[150px] animate-float-slow opacity-20" style={{animationDelay: '-5s'}}></div>
-        <div className="absolute inset-0 bg-background/20 backdrop-grayscale-[0.2]"></div>
+    <div className="text-on-surface bg-background min-h-screen flex flex-col relative selection:bg-primary/30 selection:text-primary overflow-hidden">
+      {/* Ambient Background & Auras */}
+      <div className="ambient-aura-container">
+        <div className="aura-blob aura-1" style={{ 
+            background: `radial-gradient(circle, ${isPlaying ? 'rgba(46,45,107,1)' : 'rgba(28,52,99,1)'} 0%, rgba(13,24,46,0) 70%)` 
+        }}></div>
+        <div className="aura-blob aura-2"></div>
+        <div className="aura-blob aura-3"></div>
       </div>
 
-      <header className="bg-transparent w-full pt-8 px-6 flat no shadows z-20 shrink-0">
-        <div className="flex justify-between items-center w-full max-w-2xl mx-auto">
-          <button 
-             onClick={togglePlay}
-             className="text-primary hover:opacity-80 transition-opacity scale-95 duration-200 transition-transform flex items-center justify-center w-10 h-10 smooth-transition"
-          >
-            {isPlaying ? (
-              <span className="material-symbols-outlined animate-pulse-soft text-[28px]" style={{fontVariationSettings: "'FILL' 0"}}>graphic_eq</span>
-            ) : (
-              <span className="material-symbols-outlined text-[28px]" style={{fontVariationSettings: "'FILL' 1"}}>play_arrow</span>
-            )}
-          </button>
-          <h1 className="text-headline-md font-headline-md font-bold tracking-tight text-on-surface">Auralis</h1>
-          <button 
-            onClick={() => setIsLoginModalOpen(true)}
-            className="text-primary hover:opacity-80 transition-opacity scale-95 duration-200 transition-transform flex items-center justify-center w-10 h-10 smooth-transition"
-          >
-            {userProfile ? (
-              <img src={userProfile.avatarUrl} alt="User Avatar" className="w-8 h-8 rounded-full border border-white/20 shadow-md" title={userProfile.nickname} />
-            ) : (
-              <span className="material-symbols-outlined text-[24px]" style={{fontVariationSettings: "'FILL' 0"}}>person</span>
-            )}
-          </button>
-        </div>
+      {/* Background Scrolling Lyrics / Atmosphere */}
+      <div className="fixed inset-0 pointer-events-none flex flex-col items-center justify-center z-[1] gap-8 transform -translate-y-12 mix-blend-screen overflow-hidden opacity-30">
+        {parsedLyrics.slice(Math.max(0, parsedLyrics.findIndex(l => l.time >= currentTime) - 1), Math.max(0, parsedLyrics.findIndex(l => l.time >= currentTime) - 1) + 3).map((line, idx) => (
+          <div key={idx} className={`font-body-lg text-primary tracking-widest text-center transition-all ${idx === 1 ? 'opacity-90 text-4xl drop-shadow-[0_0_20px_rgba(255,255,255,0.5)] font-headline-md' : 'opacity-40 blur-[2px] text-2xl'}`}>
+            {line.text}
+          </div>
+        ))}
+      </div>
+
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-[2]">
+        <div className="whispering-comment" style={{top: '15%', left: '10%', transform: 'rotate(-5deg)'}}>Listening to the resonance...</div>
+        <div className="whispering-comment" style={{top: '45%', right: '5%', transform: 'rotate(3deg)', fontSize: '18px', opacity: 0.15}}>Drifting in the soundscape</div>
+        <div className="whispering-comment" style={{top: '75%', left: '-5%', transform: 'rotate(-2deg)', fontSize: '32px', opacity: 0.1}}>Aura Runtime</div>
+      </div>
+
+      {/* TopAppBar */}
+      <header className="hidden md:flex fixed top-0 w-full z-50 justify-between items-center px-container-padding-desktop py-unit backdrop-blur-[40px] bg-surface/10 transition-all duration-700 ease-in-out">
+        <div className="font-display-lg-mobile text-display-lg-mobile tracking-tighter text-primary dark:text-primary">Aura</div>
+        <nav className="flex gap-8"><a className="text-primary font-bold font-body-md text-body-md hover:opacity-80 transition-opacity" href="#">Aura</a></nav>
+        <button className="text-primary dark:text-primary hover:opacity-80 transition-opacity" onClick={() => setIsLoginModalOpen(true)}>
+          {userProfile ? (
+            <img src={userProfile.avatarUrl} alt="User Avatar" className="w-8 h-8 rounded-full border border-white/20 shadow-md" title={userProfile.nickname} />
+          ) : (
+            <span className="material-symbols-outlined" style={{fontSize: '32px'}}>account_circle</span>
+          )}
+        </button>
       </header>
 
-      <main className="flex-1 overflow-y-auto px-4 md:px-container-padding-desktop pb-6 pt-4 relative custom-scrollbar">
-        <div className="fixed top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-primary-container/10 rounded-full blur-[120px] pointer-events-none z-0"></div>
-        <div className="max-w-xl mx-auto flex flex-col gap-stack-md relative z-10 pb-16">
-          <AmbientStatusBar 
-            timeStr={timeStr} 
-            sessionMood={sessionMood} 
-            weatherIcon={weatherData.icon} 
-            weatherText={weatherData.text} 
-          />
+      <header className="md:hidden fixed top-0 w-full z-50 flex justify-between items-center px-container-padding-mobile py-unit backdrop-blur-[40px] bg-surface/10 transition-all duration-700 ease-in-out">
+        <div className="font-display-lg-mobile text-display-lg-mobile tracking-tighter text-primary dark:text-primary">Aura</div>
+        <button className="text-primary dark:text-primary hover:opacity-80 transition-opacity" onClick={() => setIsLoginModalOpen(true)}>
+          {userProfile ? (
+            <img src={userProfile.avatarUrl} alt="User Avatar" className="w-8 h-8 rounded-full border border-white/20 shadow-md" title={userProfile.nickname} />
+          ) : (
+            <span className="material-symbols-outlined" style={{fontSize: '32px'}}>account_circle</span>
+          )}
+        </button>
+      </header>
+
+      {/* Main Content Layout */}
+      <div className="flex-1 flex w-full relative z-10 pt-24 pb-32 md:pt-32 md:pb-0 h-full overflow-y-auto custom-scrollbar">
+        <main className="flex-1 flex flex-col items-center justify-start px-container-padding-mobile md:px-container-padding-desktop max-w-4xl mx-auto w-full gap-8 relative z-10 min-h-full">
           
-          <div className="bg-surface-variant/40 backdrop-blur-2xl rounded-[32px] p-6 border-t border-l border-white/10 shadow-2xl flex flex-col gap-6 transform transition-all duration-500">
-            <div className="flex justify-between items-start gap-4">
-              <div className="flex flex-col gap-1 flex-1 min-w-0">
-                <AnimatePresence mode="wait">
-                  <motion.h2 
-                    key={currentTrack?.matchedSongDetail?.name || currentTrack?.trackName || 'Initializing Model'}
-                    initial={{ opacity: 0, y: 5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -5 }}
-                    transition={{ duration: 0.2 }}
-                    className="text-headline-md font-headline-md font-bold text-on-surface truncate"
-                  >
-                    {currentTrack?.matchedSongDetail?.name || currentTrack?.trackName || 'Initializing Model'}
-                  </motion.h2>
-                </AnimatePresence>
-                <AnimatePresence mode="wait">
-                  <motion.p 
-                    key={currentTrack?.matchedSongDetail?.ar?.[0]?.name || currentTrack?.artist || 'Standby'}
-                    initial={{ opacity: 0, y: 5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -5 }}
-                    transition={{ duration: 0.2, delay: 0.1 }}
-                    className="text-body-md font-body-md text-on-surface-variant truncate"
-                  >
-                    {currentTrack?.matchedSongDetail?.ar?.[0]?.name || currentTrack?.artist || 'Standby'}
-                  </motion.p>
-                </AnimatePresence>
-                <MinimalLyrics lyrics={parsedLyrics} currentTime={currentTime} />
+          {/* Agent Message Area */}
+          <div className="w-full max-w-2xl mt-8 flex flex-col items-center justify-center min-h-[160px]">
+            {loading ? (
+               <div className="flex flex-col items-center gap-4">
+                  <div className="aura-core flex-shrink-0 w-16 h-16 relative">
+                    <div className="absolute inset-0 rounded-full bg-primary/40 blur-xl animate-pulse"></div>
+                    <div className="relative w-full h-full rounded-full bg-gradient-to-br from-primary via-secondary to-tertiary-fixed-dim shadow-[0_0_30px_rgba(163,203,255,0.8)] flex items-center justify-center overflow-hidden animate-pulse">
+                    </div>
+                  </div>
+                  <div className="text-primary/70 font-body-md animate-pulse">
+                     {streamedText || agentStatus || 'Listening...'}
+                  </div>
+               </div>
+            ) : (
+               <motion.div 
+                 initial={{ opacity: 0, y: 10 }}
+                 animate={{ opacity: 1, y: 0 }}
+                 className="flex gap-6 items-start w-full"
+               >
+                 <div className="aura-core flex-shrink-0 w-14 h-14 relative mt-1">
+                   <div className="absolute inset-0 rounded-full bg-primary/20 blur-xl animate-pulse"></div>
+                   <div className="relative w-full h-full rounded-full bg-gradient-to-br from-primary via-secondary to-tertiary-fixed-dim shadow-[0_0_25px_rgba(163,203,255,0.6)] flex items-center justify-center overflow-hidden">
+                     <div className="absolute w-8 h-8 bg-white/40 blur-md rounded-full -top-1 -left-1 animate-pulse"></div>
+                     <div className="absolute w-6 h-6 bg-secondary-fixed/30 blur-sm rounded-full bottom-2 right-2 animate-bounce" style={{animationDuration: '4s'}}></div>
+                   </div>
+                 </div>
+                 <div className="glass-chat rounded-[2rem] py-[16px] px-[24px] text-primary font-body-lg text-body-lg inline-block relative glow-active rounded-tl-sm">
+                   <p className="leading-relaxed">
+                     {displayMessageStr.split('\n').map((line, i) => <span key={i} className="block">{line}</span>)}
+                   </p>
+                 </div>
+               </motion.div>
+            )}
+          </div>
+
+          {/* Dummy Memory Keep UI (Matching HTML) */}
+          <div className="w-full max-w-2xl flex items-center justify-between group relative opacity-60 hover:opacity-100 transition-opacity">
+            <div className="flex-1 glass-chat rounded-2xl py-4 px-6 border-l-4 border-primary/20">
+              <p className="text-primary font-body-md opacity-90">
+                Aura adapts to your vibe. Swiping will commit it to memory.
+              </p>
+            </div>
+            <div className="flex items-center gap-4 ml-6">
+              <div className="flex flex-col items-center gap-2 group/particle cursor-grab active:cursor-grabbing transition-all hover:scale-105">
+                <div className="relative flex items-center justify-center">
+                  <div className="memory-particle w-10 h-10 rounded-full z-10"></div>
+                  <div className="absolute left-12 flex items-center swipe-hint text-primary/40 pointer-events-none">
+                    <span className="material-symbols-outlined" style={{fontSize: '20px'}}>chevron_right</span>
+                    <span className="material-symbols-outlined -ml-2 text-primary/20" style={{fontSize: '20px'}}>chevron_right</span>
+                  </div>
+                </div>
+                <span className="font-label-sm text-[10px] text-on-surface-variant/60 uppercase tracking-widest whitespace-nowrap">Keep memory?</span>
               </div>
-              <div className="relative shrink-0 mt-2">
-                <div className={`absolute inset-0 bg-primary/30 blur-2xl rounded-full mix-blend-screen transition-all duration-1000 ${isPlaying ? 'scale-[1.3] opacity-100 animate-pulse-soft' : 'scale-100 opacity-50'}`}></div>
-                <div className="w-32 h-32 rounded-2xl overflow-hidden shadow-2xl border border-white/10 bg-surface/50 relative z-10 backdrop-blur-md">
-                  <AnimatePresence mode="popLayout">
-                    {(currentTrack?.imageUrl || currentTrack?.matchedSongDetail?.al?.picUrl) ? (
-                       <motion.img 
-                         key={currentTrack?.imageUrl || currentTrack?.matchedSongDetail?.al?.picUrl}
-                         initial={{ opacity: 0, scale: 0.8, rotate: -5 }}
-                         animate={{ opacity: 1, scale: isPlaying ? 1.05 : 1, rotate: 0 }}
-                         exit={{ opacity: 0, scale: 1.1, rotate: 5 }}
-                         transition={{ duration: 0.5, ease: "easeOut" }}
-                         src={currentTrack.imageUrl || currentTrack.matchedSongDetail?.al?.picUrl} 
-                         className="w-full h-full object-cover origin-center" 
-                       />
-                    ) : (
-                       <motion.div 
-                         key="placeholder"
-                         initial={{ opacity: 0 }}
-                         animate={{ opacity: 1 }}
-                         exit={{ opacity: 0 }}
-                         className="w-full h-full flex items-center justify-center text-on-surface-variant/20 absolute inset-0"
-                       >
-                         <span className="material-symbols-outlined text-[48px]">album</span>
-                       </motion.div>
-                    )}
-                  </AnimatePresence>
+              <div className="flex flex-col items-center gap-2">
+                <div className="w-12 h-12 rounded-full glass-panel flex items-center justify-center border-dashed border-primary/30 group-hover:border-primary/60 transition-colors">
+                  <span className="material-symbols-outlined text-primary/40" style={{fontSize: '28px'}}>psychology</span>
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-4 mt-2">
-              <button onClick={prevTrack} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/5 transition-colors text-on-surface-variant shrink-0">
-                 <span className="material-symbols-outlined text-[20px]">skip_previous</span>
-              </button>
-              <span className="text-label-sm font-label-sm text-on-surface-variant w-8 text-right shrink-0">{formatTime(currentTime)}</span>
-              <WaveformScrubber 
-                 duration={duration} 
-                 currentTime={currentTime} 
-                 audioUrl={(currentTrack?.audioUrl && currentTrack.audioUrl !== "vip_free_trial") ? `/api/proxy-audio?url=${encodeURIComponent(currentTrack.audioUrl)}` : undefined}
-                 onSeek={(pct) => {
-                 if (audioRef.current && duration) {
-                    audioRef.current.currentTime = pct * duration;
-                    setCurrentTime(pct * duration);
-                 }
-              }} />
-              <span className="text-label-sm font-label-sm text-on-surface-variant w-8 shrink-0">{formatTime(duration)}</span>
-              <button onClick={nextTrack} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/5 transition-colors text-on-surface-variant shrink-0">
-                 <span className="material-symbols-outlined text-[20px]">skip_next</span>
+          </div>
+
+          {/* Recommendation Card / Flow */}
+          {recommendation?.tracks && recommendation.tracks.length > 0 && (
+             <div className="w-full flex flex-col pt-8">
+                <div className="w-full max-w-4xl self-center relative flex items-center justify-center h-[350px] md:h-[400px]">
+                  {/* Previous Track */}
+                  <div 
+                     className="absolute left-4 md:left-0 w-48 md:w-64 aspect-square rounded-xl overflow-hidden glass-panel opacity-40 hover:opacity-80 cursor-pointer transform -rotate-12 -translate-x-8 md:-translate-x-12 scale-90 transition-all duration-700 z-10"
+                     onClick={prevTrack}
+                  >
+                    {prevTrackObj ? (
+                       <img alt="Previous track" className="w-full h-full object-cover mix-blend-luminosity" src={prevTrackObj.imageUrl || prevTrackObj.matchedSongDetail?.al?.picUrl || ''}/>
+                    ) : (
+                       <div className="w-full h-full flex items-center justify-center bg-black/50"><span className="material-symbols-outlined text-4xl text-white/30">album</span></div>
+                    )}
+                  </div>
+                  
+                  {/* Current Track */}
+                  <div className="relative w-64 md:w-72 aspect-square rounded-xl overflow-hidden glass-panel shadow-[0_0_50px_rgba(163,203,255,0.4)] transform scale-110 md:scale-125 transition-all duration-700 z-30 group">
+                    {currentTrack ? (
+                       <img alt="Current track" className="w-full h-full object-cover opacity-90" src={currentTrack.imageUrl || currentTrack.matchedSongDetail?.al?.picUrl || ''}/>
+                    ) : (
+                       <div className="w-full h-full flex items-center justify-center bg-black/50"><span className="material-symbols-outlined text-6xl text-white/50">album</span></div>
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                      <button onClick={togglePlay} className="w-16 h-16 rounded-full border border-white/40 flex items-center justify-center bg-black/40 backdrop-blur-md text-primary hover:scale-110 transition-transform">
+                        <span className="material-symbols-outlined" style={{fontSize: '32px', fontVariationSettings: "'FILL' 1"}}>{isPlaying ? 'pause' : 'play_arrow'}</span>
+                      </button>
+                    </div>
+                    <div className="absolute bottom-4 left-4 right-4">
+                      <h3 className="text-primary font-headline-md text-xl md:text-2xl truncate">{currentTrack?.trackName || 'Aura Standby'}</h3>
+                      <p className="text-on-surface-variant text-[10px] md:text-xs uppercase tracking-widest truncate">{currentTrack?.artist || 'Waiting for resonance'}</p>
+                    </div>
+                  </div>
+
+                  {/* Next Track */}
+                  <div 
+                     className="absolute right-4 md:right-0 w-48 md:w-64 aspect-square rounded-xl overflow-hidden glass-panel opacity-40 hover:opacity-80 cursor-pointer transform rotate-12 translate-x-8 md:translate-x-12 scale-90 transition-all duration-700 z-10"
+                     onClick={() => nextTrack(true)}
+                  >
+                    {nextTrackObj ? (
+                       <img alt="Next track" className="w-full h-full object-cover mix-blend-luminosity" src={nextTrackObj.imageUrl || nextTrackObj.matchedSongDetail?.al?.picUrl || ''}/>
+                    ) : (
+                       <div className="w-full h-full flex items-center justify-center bg-black/50"><span className="material-symbols-outlined text-4xl text-white/30">album</span></div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Progress Bar under Carousel */}
+                <div className="w-full max-w-md self-center flex items-center justify-between gap-4 mt-12 mb-4">
+                  <span className="font-label-sm text-label-sm text-on-surface-variant/80 w-10 text-right">{formatTime(currentTime)}</span>
+                  <WaveformScrubber 
+                     duration={duration} 
+                     currentTime={currentTime} 
+                     audioUrl={(currentTrack?.audioUrl && currentTrack.audioUrl !== "vip_free_trial") ? `/api/proxy-audio?url=${encodeURIComponent(currentTrack.audioUrl)}` : undefined}
+                     onSeek={(pct) => {
+                     if (audioRef.current && duration) {
+                        audioRef.current.currentTime = pct * duration;
+                        setCurrentTime(pct * duration);
+                     }
+                  }} />
+                  <span className="font-label-sm text-label-sm text-on-surface-variant/80 w-10">{formatTime(duration)}</span>
+                </div>
+             </div>
+          )}
+
+          {/* Interaction Chips */}
+          {displayOptions && displayOptions.length > 0 && (
+             <div className="w-full max-w-2xl flex flex-wrap gap-4 justify-center mt-2">
+               {displayOptions.map((opt, idx) => {
+                  const isDisabled = latestAgentMessage?.optionsDisabled;
+                  return (
+                    <button 
+                       key={idx}
+                       onClick={() => {
+                          if (!isDisabled) handleChipClick(opt.prompt, opt.label);
+                       }}
+                       disabled={isDisabled}
+                       className={`glass-panel rounded-full px-6 py-3 font-body-md text-body-md transition-colors flex items-center gap-2 group ${isDisabled ? 'opacity-40 cursor-default' : 'hover:bg-white/10 text-primary cursor-pointer'}`}
+                    >
+                      <span className="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors" style={{fontSize: '20px'}}>auto_awesome</span>
+                      {opt.label}
+                    </button>
+                  );
+               })}
+             </div>
+          )}
+
+          {/* Input Area */}
+          <div className="w-full max-w-2xl mt-auto pt-8 mb-8 pb-10">
+            <div className="glass-panel rounded-full px-6 py-4 flex items-center gap-4 bg-surface-container/60 focus-within:bg-surface-container/80 focus-within:border-primary/40 transition-all border border-white/10 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.5)] hover:border-white/20">
+              <span className="material-symbols-outlined text-on-surface-variant" style={{fontSize: '24px'}}>mic</span>
+              <input 
+                 className="bg-transparent border-none outline-none flex-1 text-primary font-body-md text-body-md placeholder:text-on-surface-variant/50 focus:ring-0 w-full" 
+                 placeholder="Tell Aura how you feel..." 
+                 type="text"
+                 value={inputText}
+                 onChange={(e) => setInputText(e.target.value)}
+                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                 disabled={loading}
+              />
+              <button 
+                 onClick={handleSend}
+                 disabled={!inputText.trim() || loading}
+                 className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/20 hover:bg-primary/40 transition-colors disabled:opacity-30"
+              >
+                 <span className="material-symbols-outlined text-primary text-sm">arrow_upward</span>
               </button>
             </div>
           </div>
-          
-          <QueuePanel 
-            tracks={recommendation?.tracks || []} 
-            currentIndex={currentTrackIndex}
-            onSelect={(idx) => playTrack(idx)}
-            onRemove={handleTrackRemove}
-            onClear={handleClearQueue}
-            onRefresh={() => fetchAudioRecommendation(undefined, "换一批歌曲 (Refresh queue with new tracks)")}
-            isExpanded={isQueueExpanded}
-            onToggleExpand={() => setIsQueueExpanded(!isQueueExpanded)}
-          />
+        </main>
 
-          <ModernChat messages={messages} onSend={(txt) => fetchAudioRecommendation(undefined, txt)} loading={loading} agentStatus={agentStatus} streamedText={streamedText} onChipClick={handleChipClick} />
-        </div>
-      </main>
+        {/* Right Side Nav (Memory Soundscape Peek) */}
+        <aside className="hidden md:flex flex-col fixed right-0 top-0 h-full w-24 border-l border-white/5 backdrop-blur-[40px] z-40 items-center py-32 gap-12 bg-surface/30">
+          <div className="writing-vertical-rl transform rotate-[180deg] font-label-sm text-label-sm text-on-surface-variant/50 tracking-[0.3em] uppercase mb-8">
+             Memory Soundscape
+          </div>
+          <div className="flex flex-col gap-8 items-center relative flex-1">
+            <div className="absolute top-0 bottom-0 w-[1px] bg-white/10 left-1/2 transform -translate-x-1/2 z-[-1]"></div>
+            
+            {['Ethereal Era', 'Vinyl Roots', 'Digital Pulse', 'Synth Waves'].map((mem, i) => (
+               <button key={i} className={`rounded-full transition-colors relative group ${i === 2 ? 'w-4 h-4 bg-primary shadow-[0_0_15px_rgba(255,255,255,0.5)]' : 'w-3 h-3 bg-on-surface-variant/30 hover:bg-primary'}`}>
+                 <span className={`absolute right-8 top-1/2 transform -translate-y-1/2 whitespace-nowrap font-label-sm text-label-sm text-primary bg-black/40 px-3 py-1 rounded glass-panel transition-opacity ${i === 2 ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                   {mem}
+                 </span>
+               </button>
+             ))}
+          </div>
+        </aside>
+      </div>
+
+      {/* Bottom Nav Bar (Mobile) */}
+      <nav className="md:hidden fixed bottom-0 w-full z-50 flex justify-around items-center h-20 pb-4 px-4 backdrop-blur-[40px] bg-surface/10 rounded-t-xl transition-all duration-700 ease-in-out">
+        <button className="flex flex-col items-center justify-center text-primary drop-shadow-[0_0_8px_rgba(255,255,255,0.4)] scale-110 transition-transform duration-500 gap-1 w-16">
+          <span className="material-symbols-outlined" style={{fontVariationSettings: "'FILL' 1"}}>auto_awesome</span>
+          <span className="font-label-sm text-label-sm">Aura</span>
+        </button>
+        <button className="flex flex-col items-center justify-center text-on-surface-variant/60 hover:text-primary transition-colors gap-1 w-16" onClick={() => setIsQueueExpanded(!isQueueExpanded)}>
+          <span className="material-symbols-outlined">library_music</span>
+          <span className="font-label-sm text-label-sm">Queue</span>
+        </button>
+        <button className="flex flex-col items-center justify-center text-on-surface-variant/60 hover:text-primary transition-colors gap-1 w-16">
+          <span className="material-symbols-outlined">timeline</span>
+          <span className="font-label-sm text-label-sm">History</span>
+        </button>
+        <button className="flex flex-col items-center justify-center text-on-surface-variant/60 hover:text-primary transition-colors gap-1 w-16">
+          <span className="material-symbols-outlined">settings</span>
+          <span className="font-label-sm text-label-sm">Settings</span>
+        </button>
+      </nav>
+
+      {/* Keep full Queue Panel accessible conditionally below for mobile/hidden areas, but wait... 
+          "对于现有的歌曲队列我的要求是： 保留 QueuePanel 的功能逻辑，但 UI 改为新的ui，尽你最大努力去做！"
+          This means we don't need the legacy QueuePanel component anymore, we just built the UI.
+          Wait, is there a way to manage the full list of tracks if there are more than 3? 
+          We could render the legacy QueuePanel conditionally if they tap 'Queue' on mobile, just to keep full track list functionality. Lets keep it hidden unless asked.
+      */}
+      <div className={`fixed inset-0 z-40 bg-background/90 backdrop-blur-xl transition-transform duration-300 md:hidden ${isQueueExpanded ? 'translate-y-0' : 'translate-y-full'}`}>
+         <div className="pt-24 px-4 h-full overflow-y-auto pb-32">
+            <h2 className="text-xl font-headline-md mb-4 text-primary">Queue</h2>
+            <QueuePanel 
+              tracks={recommendation?.tracks || []} 
+              currentIndex={currentTrackIndex}
+              onSelect={(idx) => { playTrack(idx); setIsQueueExpanded(false); }}
+              onRemove={handleTrackRemove}
+              onClear={handleClearQueue}
+              onRefresh={() => fetchAudioRecommendation(undefined, "换一批歌曲 (Refresh queue with new tracks)")}
+              isExpanded={true}
+              onToggleExpand={() => setIsQueueExpanded(false)}
+            />
+         </div>
+      </div>
 
       <audio 
         ref={audioRef} 

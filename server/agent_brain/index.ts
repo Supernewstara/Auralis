@@ -61,7 +61,7 @@ export async function processRecommendation(reqData: RecommendRequest) {
   // Hard enforcement for consecutive skips: force suggest_options
   const consecutiveSkips = (rawContext && rawContext.consecutiveSkips) || 0;
   const activeTools = consecutiveSkips >= 3
-    ? toolDefinitions.filter(t => t.function.name === 'suggest_options')
+    ? toolDefinitions.filter(t => (t as any).function?.name === 'suggest_options')
     : toolDefinitions;
 
   // 3. React Loop
