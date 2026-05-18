@@ -696,9 +696,6 @@ export default function App() {
   const currentTrack = recommendation?.tracks?.[currentTrackIndex];
   const parsedLyrics = useMemo(() => parseLyrics(currentTrack?.lyrics || ''), [currentTrack?.lyrics]);
 
-  const prevTrackObj = recommendation?.tracks?.[currentTrackIndex - 1];
-  const nextTrackObj = recommendation?.tracks?.[currentTrackIndex + 1];
-
   // Get the latest agent message to display
   const latestAgentMessage = messages.filter(m => m.role === 'agent').pop();
   const displayMessageStr = latestAgentMessage ? (typeof latestAgentMessage.content === 'string' ? latestAgentMessage.content : '') : 'Auralis Runtime Initiated.';
@@ -832,48 +829,59 @@ export default function App() {
           {recommendation?.tracks && recommendation.tracks.length > 0 && (
              <div className="w-full flex flex-col pt-8">
                 <div className="w-full max-w-4xl self-center relative flex items-center justify-center h-[350px] md:h-[400px]">
-                  {/* Previous Track */}
-                  <div 
-                     className="absolute left-4 md:left-0 w-48 md:w-64 aspect-square rounded-xl overflow-hidden glass-panel opacity-40 hover:opacity-80 cursor-pointer transform -rotate-12 -translate-x-8 md:-translate-x-12 scale-90 transition-all duration-700 z-10"
-                     onClick={prevTrack}
-                  >
-                    {prevTrackObj ? (
-                       <img alt="Previous track" className="w-full h-full object-cover mix-blend-luminosity" src={prevTrackObj.imageUrl || prevTrackObj.matchedSongDetail?.al?.picUrl || ''}/>
-                    ) : (
-                       <div className="w-full h-full flex items-center justify-center bg-black/50"><span className="material-symbols-outlined text-4xl text-white/30">album</span></div>
-                    )}
-                  </div>
-                  
-                  {/* Current Track */}
-                  <div className="relative w-64 md:w-72 aspect-square rounded-xl overflow-hidden glass-panel shadow-[0_0_50px_rgba(163,203,255,0.4)] transform scale-110 md:scale-125 transition-all duration-700 z-30 group">
-                    {currentTrack ? (
-                       <img alt="Current track" className="w-full h-full object-cover opacity-90" src={currentTrack.imageUrl || currentTrack.matchedSongDetail?.al?.picUrl || ''}/>
-                    ) : (
-                       <div className="w-full h-full flex items-center justify-center bg-black/50"><span className="material-symbols-outlined text-6xl text-white/50">album</span></div>
-                    )}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
-                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                      <button onClick={togglePlay} className="w-16 h-16 rounded-full border border-white/40 flex items-center justify-center bg-black/40 backdrop-blur-md text-primary hover:scale-110 transition-transform">
-                        <span className="material-symbols-outlined" style={{fontSize: '32px', fontVariationSettings: "'FILL' 1"}}>{isPlaying ? 'pause' : 'play_arrow'}</span>
-                      </button>
-                    </div>
-                    <div className="absolute bottom-4 left-4 right-4">
-                      <h3 className="text-primary font-headline-md text-xl md:text-2xl truncate">{currentTrack?.trackName || 'Aura Standby'}</h3>
-                      <p className="text-on-surface-variant text-[10px] md:text-xs uppercase tracking-widest truncate">{currentTrack?.artist || 'Waiting for resonance'}</p>
-                    </div>
-                  </div>
+                  {recommendation.tracks.map((track, i) => {
+                     const offset = i - currentTrackIndex;
+                     if (Math.abs(offset) > 2) return null;
 
-                  {/* Next Track */}
-                  <div 
-                     className="absolute right-4 md:right-0 w-48 md:w-64 aspect-square rounded-xl overflow-hidden glass-panel opacity-40 hover:opacity-80 cursor-pointer transform rotate-12 translate-x-8 md:translate-x-12 scale-90 transition-all duration-700 z-10"
-                     onClick={() => nextTrack(true)}
-                  >
-                    {nextTrackObj ? (
-                       <img alt="Next track" className="w-full h-full object-cover mix-blend-luminosity" src={nextTrackObj.imageUrl || nextTrackObj.matchedSongDetail?.al?.picUrl || ''}/>
-                    ) : (
-                       <div className="w-full h-full flex items-center justify-center bg-black/50"><span className="material-symbols-outlined text-4xl text-white/30">album</span></div>
-                    )}
-                  </div>
+                     const isCenter = offset === 0;
+                     const isLeft = offset === -1;
+                     const isRight = offset === 1;
+                     const isFarLeft = offset <= -2;
+                     const isFarRight = offset >= 2;
+
+                     const baseClasses = "absolute aspect-square rounded-xl overflow-hidden glass-panel transition-all duration-700 transform";
+                     
+                     let positionalClasses = "";
+                     if (isCenter) {
+                       positionalClasses = "w-64 md:w-72 shadow-[0_0_50px_rgba(163,203,255,0.4)] scale-110 md:scale-125 z-30 opacity-100 group";
+                     } else if (isLeft) {
+                       positionalClasses = "left-4 md:left-0 w-48 md:w-64 opacity-40 hover:opacity-80 cursor-pointer -rotate-12 -translate-x-8 md:-translate-x-12 scale-90 z-10";
+                     } else if (isRight) {
+                       positionalClasses = "right-4 md:right-0 w-48 md:w-64 opacity-40 hover:opacity-80 cursor-pointer rotate-12 translate-x-8 md:translate-x-12 scale-90 z-10";
+                     } else if (isFarLeft) {
+                       positionalClasses = "left-0 w-48 md:w-64 opacity-0 -rotate-12 -translate-x-full scale-75 pointer-events-none z-0";
+                     } else if (isFarRight) {
+                       positionalClasses = "right-0 w-48 md:w-64 opacity-0 rotate-12 translate-x-full scale-75 pointer-events-none z-0";
+                     }
+
+                     return (
+                        <div 
+                           key={`track-card-${track.id || track.trackName || i}`}
+                           className={`${baseClasses} ${positionalClasses}`}
+                           onClick={() => {
+                              if (isLeft) prevTrack();
+                              if (isRight) nextTrack(true);
+                           }}
+                        >
+                           {track ? (
+                             <img alt="track" className={`w-full h-full object-cover transition-all duration-700 ${isCenter ? 'opacity-90' : 'mix-blend-luminosity'}`} src={track.imageUrl || track.matchedSongDetail?.al?.picUrl || ''}/>
+                           ) : (
+                             <div className="w-full h-full flex items-center justify-center bg-black/50"><span className="material-symbols-outlined text-4xl text-white/30">album</span></div>
+                           )}
+
+                           <div className={`absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent transition-opacity duration-700 ${isCenter ? 'opacity-100' : 'opacity-0'}`}></div>
+                           <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${isCenter ? 'opacity-0 group-hover:opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                             <button onClick={(e) => { e.stopPropagation(); if (isCenter) togglePlay(); }} className="w-16 h-16 rounded-full border border-white/40 flex items-center justify-center bg-black/40 backdrop-blur-md text-primary hover:scale-110 transition-transform cursor-pointer pointer-events-auto">
+                               <span className="material-symbols-outlined" style={{fontSize: '32px', fontVariationSettings: "'FILL' 1"}}>{isPlaying && isCenter ? 'pause' : 'play_arrow'}</span>
+                             </button>
+                           </div>
+                           <div className={`absolute bottom-4 left-4 right-4 transition-opacity duration-700 ${isCenter ? 'opacity-100' : 'opacity-0'}`}>
+                             <h3 className="text-primary font-headline-md text-xl md:text-2xl truncate">{track.trackName || 'Aura Standby'}</h3>
+                             <p className="text-on-surface-variant text-[10px] md:text-xs uppercase tracking-widest truncate">{track.artist || 'Waiting for resonance'}</p>
+                           </div>
+                        </div>
+                     );
+                  })}
                 </div>
 
                 {/* Progress Bar under Carousel */}
